@@ -2,7 +2,7 @@ from layer import Layer, InputLayer, OutputLayer
 
 class Model:
     def __init__(self, input, output, debug_mode = False):
-        self.debug_mode = debug_mode  # print progresses
+        self.debug_mode = debug_mode  # print progress
         self.input_layer = InputLayer(input)
         self.layers = []
         self.output_layer = OutputLayer(output)

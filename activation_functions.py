@@ -1,4 +1,4 @@
-from math import exp
+from numpy import exp
 
 def act_funct_manager(self, name):  # also known as transfer function
     if name.lower() not in {"sigmoid", "relu", "lrelu", "tanh"}:
@@ -23,7 +23,5 @@ def act_funct_manager(self, name):  # also known as transfer function
 def sigmoid(x):
     return 1/(1 + exp(-x))
 
-def cazzo():
-    return sigmoid
-
-print(cazzo())
+def softmax(values):
+    return exp(values[0])

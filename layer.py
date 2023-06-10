@@ -1,13 +1,10 @@
-from neuron import Neuron
+from numpy import array, random, zeros
 
 class Layer:
     def __init__(self, n_neurons):
-        self.layer = []
-        self.create(n_neurons)
-
-    def create(self, n_neurons):
-        for i in range(n_neurons):
-            self.layer.append(Neuron())
+        self.weights = random.uniform(low=0.0, high=1.0, size=n_neurons)
+        self.bias = 0
+        self.activation_function = 0
 
     def summation(self):
         '''
@@ -18,13 +15,3 @@ class Layer:
         for neuron in self.layer:
             sum += neuron
         return sum
-
-
-class InputLayer:
-    def __init__(self):
-        pass
-
-
-class OutputLayer:
-    def __init__(self):
-        pass

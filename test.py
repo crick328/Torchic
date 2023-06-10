@@ -1,11 +1,6 @@
-from random import uniform
+import numpy as np
 
-print(type(0.0))
-
-i = 0
-
-while i < 20:
-    print(uniform(0,1))
-    i+=1
-
-print(1<1.0000000000001)
+a = np.array([[1, 0, 7],
+              [0, 1]])
+b = np.array([4, 1, 5])
+np.matmul(a, b)
