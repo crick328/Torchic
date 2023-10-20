@@ -1,27 +1,31 @@
 from numpy import exp
 
-def act_funct_manager(self, name):  # also known as transfer function
-    if name.lower() not in {"sigmoid", "relu", "lrelu", "tanh"}:
-        raise Exception("Activation function not supported.")
+def act_funct_manager(name):  # also known as transfer function
+    if name:
+        assert name.lower() in {"sigmoid", "relu", "lrelu", "tanh", "softmax"}, "Activation function not supported."
     
-    match name:
-        case "sigmoid":
-            return sigmoid
+        match name:
+            case "sigmoid":
+                return sigmoid
 
-        case "relu":
-            # from layer import convolutionLayer
-            pass
+            case "relu":
+                # from layer import convolutionLayer
+                pass
 
-        case "lrelu":
-            pass
-        
-        case "tanh":
-            pass
-    pass
+            case "lrelu":
+                pass
+            
+            case "tanh":
+                pass
+
+            case "softmax":
+                return softmax
 
 
 def sigmoid(x):
+    for i, value in enumerate(x):
+        x[i] = 1/(1 + exp(-value))
     return 1/(1 + exp(-x))
 
-def softmax(values):
-    return exp(values[0])
+def softmax(x):
+    pass
