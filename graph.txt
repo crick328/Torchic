@@ -1,0 +1,29 @@
+concateno tutti i nodi in un singolo vettore e ogni index mi aiuterà a costruire un id.
+il vettore sarà dinamico: tolgo i valori del layer L-1 e concateno quelli di L+1 in modo da evitare leak di memoria.
+ci sarà una funzione nell'init che ne gestisce la costruzione
+
+2-3-2
+
+LL: {
+    layer[node_index]: {prec_layer_connections}
+
+    1[0]: {
+        0[0]: main_chain
+        0[1]: main_chain
+    },
+    1[1]: (0[0],0[1]),
+    1[2]: (0[0],0[1]),
+}
+
+LL: {
+    layer[node_index]: {prec_layer_connections}
+
+    1[0]: {
+        0[0]: new_chain_part * (1[0])
+        0[1]: main_chain
+        0[2]: main_chain
+    },
+    1[1]: (0[0],0[1]),
+}
+
+ogni layer (n,m) deve sapere le sue derivate (m)

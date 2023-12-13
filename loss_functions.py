@@ -1,6 +1,6 @@
-def mse(output_layer, expected_values):
-    # Mean Squared Error (categoria: Regression Loss Function)
-    loss = 0
-    for i, value in output_layer:
-        loss += pow(value-expected_values[i], 2)
-    return loss/len(output_layer)
+def SE(predicted, target, derivate=False):
+    # Squared Error
+    if not derivate:
+        return pow(predicted-target, 2)
+    else:
+        return 2(predicted-target)

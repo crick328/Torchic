@@ -1,9 +1,3 @@
-class Optimizer:
-    def __init__(self):
-        pass
-
-    def optimizer(self):
-        pass
-
-    def loss(self):
-        pass
+def SGD(neural_network):
+    # Stochastic gradient Descent: aggiorna tutti i parametri ogni singolo esempio (come faresti tu)
+    loss = neural_network._calc_loss()

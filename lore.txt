@@ -5,3 +5,4 @@ Replica v2: pensavo che i pallini dei layer fossero i weights, non sapevo che le
             tutti i layer andassero in una sola matrice (la weights matrix per l'appunto). Non mi spiegavo come
             potesse esistere una matrice aventi row con size diverse, ancor meno come potesse essere moltiplicata
             per un vettore;
+Replica v4: comprensione della backpropagation e rifacimento da zero per implementazione sintassi e logica migliore
