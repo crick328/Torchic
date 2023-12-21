@@ -1,8 +1,17 @@
-Tentativi di implementazione from scratch (e senza guide o sapere pregresso) delle reti neruali.
+Tentativi di implementazione from scratch delle reti neruali.
 Replica v1: pensavo che esistesse la classe neurone. Pensavo che fosse necessario creare classi speciali per input e output layer;
 Replica v2: pensavo che i pallini dei layer fossero i weights, non sapevo che le NN sono implementate con l'algebra
             lineare, e quindi non sapevo nemmeno di weights matrix, vectors, ecc. Una volta scoperto, pensavo che
             tutti i layer andassero in una sola matrice (la weights matrix per l'appunto). Non mi spiegavo come
             potesse esistere una matrice aventi row con size diverse, ancor meno come potesse essere moltiplicata
             per un vettore;
-Replica v4: comprensione della backpropagation e rifacimento da zero per implementazione sintassi e logica migliore
+Replica v4: ho imparato la backpropagation, rifatto tutto da zero per implementazione sintassi e logica migliore,
+            però mi sono completamente bloccato nel momento in cui dovevo implementare la backprop.
+            Ho provato vari approcci per venirne a capo e non sono riuscito a capire l'approccio di Karpathy.
+            Ho capito che l'unica via era ricreare la classe Tensor, ma ho messo il progetto in pausa per un mese buono.
+            Una volta tornato, sono risucito a far funzionare la backward anche con le act_fun e ho fatto crescere la classe Tensor,
+            programmando tutto senza l'uso di alcuna libreria.
+            (test6.py)
+replica v5: ho dovuto introdurre Numpy per la gestione di tutte le operazioni del tipo __operazione__ e __roperaione__. Ho scoperto che
+            i gradient si sommano e che è nel mio migliore interesse non memorizzare quelli che non servono.
+            Ho rivisitato il vecchio codice di LLayer e NNetwork, creato la loss, introddo optimizers,

@@ -1,4 +1,0 @@
-- comprendere la logica delle architetture
-- comprendere il funzionamento delle API (PyTorch)
-- sviluppare un piccolo framework che consenta di avere pieno controllo sui dati in modo da sperimentare, implementare e visualizzare
-    - visualizzare le weights matrix

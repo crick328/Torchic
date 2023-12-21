@@ -15,17 +15,12 @@ from math import exp
 # non va bene che certe operazioni hanno la _backward e altre no... Tanto non aggiunge peso al grafo finché non richiami esplicitamente con ._backward()
 # somma gradient e metti funzione per azzerarli (da chiamare dopo aver aggiornato i param)
 # controlla se sono più veloci le tue dumb_matmul o conviene far fare la matmul a numpy
+# non va bene che _backward si possa cambiare dall'init
+# _backward non è un nome abbastanza esplicito. Chiamala _backward_fn o _grad_fn
+# crea logica per rimuovere i gradient se non servono (con del)
+# rifai gli if delle backward, tipo gli if requires_grad e if is_leaf
 
-# occhio anche che Karpathy fa self.grad+=, non =
-# ANCHE PYTORCH SOMMA I GRADIENT (nella stessa backward)
-# si chiama gradient accumulation ed è fondamentale per non essere obbligati ad aggiornare i weights ad ogni bacward.
-# La somma dei gradient farà lo stesso cambiamento che avrebbero fatto i singoli gradient
-"""
-This technique works because accumulating the gradients across multiple mini-batches results
-in the same sum of gradients as if we were processing them together. Thus, logically speaking,
-using gradient accumulation, we can mimic a larger batch size without having to explicitly increase the batch size.
-https://www.blog.dailydoseofds.com/p/gradient-accumulation-increase-batch#:~:text=This%20technique%20works%20because%20accumulating,explicitly%20increase%20the%20batch%20size.
-"""
+
 
 def dumb_matmul1(matrix):
     '''
@@ -91,16 +86,20 @@ def MSE(predicted, target):
 
 
 class Tensor:
-    def __init__(self, data, requires_grad=False, _backward=None,):
+    def __init__(self, data, requires_grad=False, _backward=None):
         '''
         self.data: array che funge da vettore o matrice.
         self._backward: contiene la funzione per calcolare le derivate parziali dei parent tensor. È None se il tensor è leaf.
-        self.requires_grad: flag per richiedere l'aggiornamento del gradient. Non incide sul proseguimento della backward
+        self.is_leaf: flag che indica se il tensor è il risultato di un calcolo. Valore non modificabile.
+        self.requires_grad: flag per richiedere l'aggiornamento del gradient. Non incide sul proseguimento della backward.
+            Se il tensore è leaf lascio scegliere all'utente, sennò viene impostato a True. Valore modificabile se is_leaf=True
         self.grad: contiene il gradient (derivata parziale) w.r.t self secondo l'operazione in cui è coinvolto il tensor.
         '''
         self.data = np.array(data) if type(data) != np.ndarray else data
         self._backward = _backward
-        self.requires_grad = requires_grad if self.is_leaf() else True   # se è leaf lascio scegliere all'utente, sennò mi serve
+        self.is_leaf = True if self._backward == None else False
+        # All Tensors that have requires_grad which is False will be leaf Tensors by convention.
+        self.requires_grad = requires_grad if self.is_leaf else True
         self.grad = None
 
 
@@ -110,34 +109,33 @@ class Tensor:
 
 
     def matmul(self, other):
+        output = Tensor(np.matmul(self.data, other.data))
+
         def _matmul_backward(chain_rule_tensor):
             if self.requires_grad:
                 # derivata parziale w.r.t self, cioè x. d/dx(x×a)=a ==> d/dx(x×y)=1×y, cioè other × self con tutte le entrate ad 1.
                 # è inserita nel calcolo della chain rule per trovare il gradient w.r.t output, che è quello che serve per aggiornare i params.
-                self.grad += dumb_matmul1(other.data)*chain_rule_tensor
+                self.grad += dumb_matmul1(other.data) * chain_rule_tensor
+
+                # se i tensor hanno parent, continuo la backprop
+                if self.is_leaf == False:
+                    self._backward(self.grad)
             if other.requires_grad:
                 # derivata parziale w.r.t other, cioè y. d/dy(a×y)=a ==> d/dy(x×y)=x×1, cioè self × other con tutte le entrate ad 1.
                 # è inserita nel calcolo della chain rule per trovare il gradient w.r.t output, che è quello che serve per aggiornare i params.
-                other.grad += dumb_matmul2(self.data, len(other.data[0]))*chain_rule_tensor
+                other.grad += dumb_matmul2(self.data, len(other.data[0])) * chain_rule_tensor
+
+                if other.is_leaf == False:
+                    other._backward(other.grad)                
             # NOTA: × sta per matrix multpilication. Una volta trovata la derivata parziale, bisogna svolgere la matmul!
             # Ho codificato i "dumb_matmul" per ottenere i risultati di matmul per vettori/matrici aventi solo 1 senza fare i calcoli.
 
-            # se i tensor hanno parent, continuo la backprop
-            # per ora è indifferente chiamare self.backward() o self._backward()
-            if self.is_leaf() == False:
-                self._backward(self.grad)
-            if other.is_leaf() == False:
-                other._backward(other.grad)
+        # MA ALLORA NON HO BISOGNO DI backward NELL'INIT
+        if self.requires_grad or other.requires_grad:
+            output._backward = _matmul_backward
 
-        return Tensor(
-            data = np.matmul(self.data, other.data),
-            _backward = _matmul_backward
-            )
+        return output
     
-    
-    def is_leaf(self):
-        # definizione di leaf tensor: tensore non ottenuto da un calolo
-        return True if self._backward == None else False
     
     def shape(self):
         # (row,column)
@@ -202,6 +200,18 @@ class Tensor:
 
     def __len__(self):
         return len(self.data)
+    
+    def __setattr__(self, attr, value):
+        if hasattr(self, attr):
+            match attr:
+                case "requires_grad":
+                    # impedisco all'utente di cambiare la flag se il tensor è interno al grafo della backprop
+                    if self.is_leaf == False:
+                        raise RuntimeError("you can only change requires_grad flags of leaf variables.")
+                case "is_leaf":
+                    # impedisco di cambiare la flag
+                    raise AttributeError ("attribute 'is_leaf' of Tensor object is not writable.")
+        self.__dict__[attr] = value
 
     def __getitem__(self, index):
         return self.data[index]
@@ -209,8 +219,6 @@ class Tensor:
     def __repr__(self):
         return f"Tensor({self.data})"
     
-a = Tensor([0.,1.,3.], requires_grad=True)
-b = a**3
-b.backward(Tensor([1.,1.,1.]))
-print(b)
-print(a.grad)
+a = Tensor([0.,1.,3.], requires_grad=False)
+c = a+a
+print(c.requires_grad)

@@ -1,5 +1,0 @@
-funzionamento neuroni + vari problemi: https://towardsdatascience.com/the-heart-of-artificial-neural-networks-26627e8c03ba
-wiki AI: https://machine-learning.paperspace.com/
-
-py -3.10 -m pip install packagename
-pip3.10 install numpy

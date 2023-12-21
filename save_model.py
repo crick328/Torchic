@@ -1,1 +1,0 @@
-# salva la struttura e i valori di un modello in un json

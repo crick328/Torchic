@@ -1,2 +1,0 @@
-1) ricreare il funzionamento di una rete vanilla da zero. Senza quest'esperienza non sarai mai in grado né di comprendere né di innovare
-2) sperimentare ciò che vuoi. Hai una libreria tutta tua, perciò usa l'esperienza guadagnata per provare ciò che vuoi! Nuovi modelli di neuroni, layers, reti neurali, input, loss functions, tutto!
