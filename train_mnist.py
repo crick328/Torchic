@@ -1,5 +1,5 @@
 import mnist    #https://github.com/datapythonista/mnist
-from PIL import Image
+#from PIL import Image
 
 one_hot_encoding_dict = {
     0: [1,0,0,0,0,0,0,0,0,0],
@@ -33,6 +33,7 @@ def preprocess_image(image):
 # vorrei renderle delle tuple ordinate con (img, label)
 train_images = mnist.train_images()
 train_labels = mnist.train_labels()
+total_train_samples = train_images.shape[0]
 
 test_images = mnist.test_images()
 test_labels = mnist.test_labels()
@@ -45,48 +46,92 @@ train_labels = labels_to_OHE(train_labels)
 total_test_samples, height, width = test_images.shape
 
 
-from test_NNet import NNetwork, LLayer, Sigmoid, SELoss, save_model_type1#, load_model_type1
+from test_NNet import NNetwork, LLayer, Sigmoid, ReLU, SELoss, save_model_type1#, load_model_type1
 from optimizers import SGD
 
-model = NNetwork((
-    LLayer(height*width, 400),
-    Sigmoid(),
-    LLayer(400, 10),
+# LA RELU E' BUGGATA!!!
+
+model = NNetwork([
+    LLayer(height*width, 500),
+    ReLU(),
+    LLayer(500, 250),
+    ReLU(),
+    LLayer(250, 100),
+    ReLU(),
+    LLayer(100, 10),
     Sigmoid()
-))
+])
+print(model.state_dict())
 
 
-# training (il dataset andrebbe rimescolato dopo ogni epoch)
 import time
+import random
 
 epochs = 1
-batch_size = 60
+batch_size = 300
 start = 0
-optimizer = SGD(model.parameters())
+optimizer = SGD(model.parameters(), lr=0.01)
 
 print("Inizio training...")
+print(f"batch per epochs da fare: {total_train_samples/batch_size : .0f}")
 start_time = time.time()
 
+# se uso float16 sono lentissimo... che cazzo sto usando ora?
+
 for epoch in range(0, epochs):
-    loss_sum = 0
-    for i in range(start, start+batch_size):
-        predicted = model(train_images[i])
-        loss = SELoss(predicted, train_labels[i])
-        loss = loss.mean()
-        loss.backward()
+    print(f"=== Epoch {epoch+1} ===")
+    while start < total_train_samples:
+        loss_sum = 0
+        correct_predictions = 0
 
-        optimizer.step()
-        optimizer.zero_grad()
+        for i in range(start, start+batch_size):
+            predicted = model(train_images[i])
+            # su pytorch è una classe!
+            loss = SELoss(predicted, train_labels[i])
+            loss = loss.mean() # per stampare la loss
+            loss.backward()
 
+            optimizer.step()
+            optimizer.zero_grad()
+
+            loss_sum += loss
+            if predicted.data.argmax() == train_labels[i].index(1):
+                correct_predictions += 1
+            
         start += batch_size
-        loss_sum += loss
-    print(f"batch {start/batch_size + 1}, loss: {loss_sum/batch_size}")
+        print(f"batch {(start/batch_size) :.0f}, loss: {((loss_sum/batch_size*100).data):.1f}%, accuracy: {(correct_predictions/batch_size*100) :.1f}%")
 
-print(f"Fine training! Tempo impiegato: {(time.time() - start_time)/60} minuti")
-save_model_type1(model, "mnist 28x28")
+    # rimescolo il dataset con le labels
+    temp = list(zip(train_images, train_labels))
+    random.shuffle(temp)
+    train_images, retrain_labels = zip(*temp)
+    # res1 and res2 come out as tuples, and so must be converted to lists.
+    train_images, train_labels = list(train_images), list(train_labels)
+
+    start = 0
+    optimizer.lr = optimizer.lr * 0.1
 
 
-# eval
+print(f"Fine training! Tempo impiegato: {((time.time() - start_time)/60):.1f} minuti")
+#save_model_type1(model, "mnist 28x28")
+
+
+
+# auto eval
+correct_predictions = 0
+test_images = preprocess_images(test_images)
+test_labels = labels_to_OHE(test_labels)
+
+for index in range(0, len(test_images)):
+    predicted = model(test_images[index])
+
+    if predicted.data.argmax() == test_labels[index].index(1):
+        correct_predictions += 1
+
+print(f"Prediction corrette: {correct_predictions}/{total_test_samples}. Test accuracy: {correct_predictions/total_test_samples*100}%")
+
+# manual eval
+'''
 import random
 
 samples = 20
@@ -101,3 +146,4 @@ for i in range(0, samples):
     img.show(test_labels[index])
 
     input(f"Premi invio per un altro sample... {i}/{samples}")
+'''

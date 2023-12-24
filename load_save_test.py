@@ -38,3 +38,21 @@ with ZipFile('foo.filetype', 'r') as myzip:
     json_data_read = myzip.read('digest.json')
     newdata = json.loads(json_data_read)
     print(newdata)
+
+
+
+
+
+'''
+    def zero_grad(self, set_to_none=True):
+        for i in range (0, len(self.structure)):
+            if type(self.structure[i]) == LLayer:
+                self.structure[i].w_matrix.grad = None if set_to_none else np.zeros(self.structure[i].w_matrix.grad.data.shape)
+                self.structure[i].b_vector.grad = None if set_to_none else np.zeros(self.structure[i].b_vector.grad.data.shape)
+    
+    def step(self, lr=1e-3):
+        for i in range(0, len(self.structure)):
+            if type(self.structure[i]) == LLayer:
+                self.structure[i].w_matrix.data = self.structure[i].w_matrix.data - lr*self.structure[i].w_matrix.grad.data
+                self.structure[i].b_vector.data = self.structure[i].b_vector.data - lr*self.structure[i].b_vector.grad.data
+'''

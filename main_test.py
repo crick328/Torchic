@@ -1,7 +1,7 @@
 from test_NNet import NNetwork, LLayer, SELoss, Sigmoid, load_model_type1, save_model_type1, ReLU
 from test10_tensor import Tensor
 from optimizers import SGD
-
+import numpy as np
 # servono + commenti in generale, più spiegazioni
 
 # softmax e categoriocal cross entropy loss.
@@ -35,27 +35,67 @@ W2 = Tensor([[0.5671, 0.5108, 0.6357],
         [0.7971, 0.2383, 0.8744]], requires_grad=True)
 B2 = Tensor([0.8601, 0.5030, 0.2870], requires_grad=True)
 
+#np.set_printoptions(formatter={'float': '{: 0.3f}'.format})
+
 
 model = NNetwork((
-            LLayer(12, 6,
-                   _w_matrix=W1,
-                   _b_vector=B1),
+            LLayer(12, 6),
+                   #_w_matrix=W1,
+                   #_b_vector=B1),
             Sigmoid(),
-            LLayer(6, 3,
-                   _w_matrix=W2,
-                   _b_vector=B2),
+            LLayer(6, 3),
+                   #_w_matrix=W2,
+                   #_b_vector=B2),
             Sigmoid()
-        ))
+))
+
+
+# al primo forward pass si comporta bene, ma al secondo cancella i gradients
+
 optimizer = SGD(model.parameters())
 output = model([0,4,3,4,5,6,4,3,56,6,3,4])
 loss = SELoss(output, [7.,-10.,3.])
 loss.mean().backward()
 
+print(model.structure[-2].b_vector.grad)
 
-for element in model.structure:
-    if type(element) == LLayer:
-        print(f"grad matrice: {element.w_matrix.grad}")
-        print(f"grad bias: {element.b_vector.grad}")
+optimizer.step()
+optimizer.zero_grad()
+
+print(model.structure[-2].b_vector.grad)
+
+
+output = model([45,4,9,4,0,6,4,3,6,6,7,4])
+loss = SELoss(output, [1.,0.,-6.])
+loss.mean().backward()
+
+print(model.structure[-2].b_vector.grad)
+
+optimizer.step()
+optimizer.zero_grad()
+
+print(model.structure[-2].b_vector.grad)
+
+
+
+
+
+
+#optimizer.step()
+#optimizer.zero_grad()
+
+#print(f"vector grad: {model.structure[-2].b_vector} (dovrebbe essere aggiornato)")
+
+#output = model([0,4,3,4,5,6,4,3,56,6,3,4])
+#loss = SELoss(output, [7.,-10.,3.])
+#loss.mean().backward()
+
+
+
+for i in range(0, len(model.structure)):
+    if type(model.structure[i]) == LLayer:
+        print(f"grad matrice: {model.structure[i].w_matrix.grad}")
+        print(f"grad bias: {model.structure[i].b_vector.grad}")
 
 
 

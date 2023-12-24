@@ -16,6 +16,11 @@ import numpy as np
 # occhio perché hai un sacco di operazioni che restituiscono tensori senza grad_fn. Potrebbero interrompere tutta la backward!
 # è meglio così comunque, così non ti ritrovi con un super grafo di grad_fn che nessuno chiamerà mai
 # Nota: potresti star castando a Tensor dei risultati che sono già Tensor!
+# chiami grad_fn = None anche sui leaf tensor! Metti quelle condizioni dentro all'if is_leaf == False della backward
+# crea un mega commento con la struttura generale di tutte le operazioni con relativa backward, così hai un modello
+# chiaro da leggere e debuggare
+
+# SETTA A F16 o F8!
 
 
 def dumb_matmul1(matrix):
@@ -70,7 +75,7 @@ class Tensor:
             La variabile è None se il tensor è leaf. Viene automaticamente reimpostata a None dopo ogni passaggio.
         '''
         self.data = np.array(data) if type(data) != np.ndarray else data
-        self.is_leaf = True # aggiornato a False se si dà una grad_fn #True if not requires_grad else True
+        self.is_leaf = True # aggiornato a False se si assegna una grad_fn
         self.requires_grad = requires_grad
         self.grad = None
         self.grad_fn = None
@@ -119,13 +124,14 @@ class Tensor:
                 other.grad += Tensor(np.outer(self.data.T, chain_rule_tensor))
 
                 if other.is_leaf == False:
-                    print(other.grad_fn)
+                    #print("PULISCO")
                     other.grad_fn(other.grad)
                     other.grad = None 
 
             # elimino i pointer in modo che il garbage collector possa cancellare le variabili inutili
+            # QUESTI NON VANNO QUI
             self.grad_fn = None
-            other.grad_fn = None             
+            other.grad_fn = None       
 
         if self.requires_grad or other.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
@@ -198,7 +204,7 @@ class Tensor:
                     
             if other.requires_grad:
                 # derivata parziale w.r.t other, cioè y. d/dy(a+y)=1 ==> d/dy(x+y)=0+1, cioè other con i valori a 1.
-                other.grad += Tensor([1]*len(other.data)) * chain_rule_tensor
+                other.grad += Tensor(self.data.shape) * chain_rule_tensor
 
                 if other.is_leaf == False:
                     other.grad_fn(other.grad)
@@ -229,7 +235,7 @@ class Tensor:
         def _sub_backward(chain_rule_tensor):
             if self.requires_grad:
                 # derivata parziale w.r.t self, cioè x. d/dx(x-a)=1 ==> d/dx(x-y)=1-0, cioè self con i valori a 1.
-                self.grad += Tensor([1]*len(self.data)) * chain_rule_tensor
+                self.grad += Tensor(np.zeros(self.data.shape)) * chain_rule_tensor
 
                 if self.is_leaf == False:
                     self.grad_fn(self.grad)
@@ -298,11 +304,19 @@ class Tensor:
                     if self.is_leaf == False:
                         raise RuntimeError("you can only change requires_grad flags of leaf variables.")
                 case "is_leaf":
-                    # impedisco di cambiare la flag
-                    raise AttributeError ("attribute 'is_leaf' of Tensor object is not writable.")
+                    # se ho una grad_fn e mi stai settando is_leaf a True, te lo concedo
+                    if self.grad_fn is not None and value is True:
+                        # alcune volte ci sono dei leaf tensor che ricevono un aggiornamento dei valori, ma
+                        # questo li trasforma in non-leaf tensor. Perciò, devo risettarli manualmente a True.
+                        # Un esempio è l'aggiornamento dei params in .step()
+                        # Tuttavia, deprecherò questo metodo, in quanto, in quei casi, ti consiglio operare
+                        # con i .data
+                        pass
+                    else:
+                        # impedisco di cambiare la flag
+                        raise AttributeError ("attribute 'is_leaf' of Tensor object is not writable.")
                 case "grad_fn":
-                    # se non lo metto, dà errore perché prova a chiamare la grad_fn della prima matrice...
-                    # Probabilmente l'init stesso faceva attivare la condizione
+                    # se me la setti ad un valore =/= da None, e quindi mi assegni una grad_fn, aggiorno la flag
                     if value is not None:
                         self.__dict__["is_leaf"] = False
         self.__dict__[attr] = value

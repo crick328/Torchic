@@ -21,10 +21,10 @@ W2 = Tensor([[0.5671, 0.5108, 0.6357],
         [0.4005, 0.7835, 0.2309],
         [0.9725, 0.4179, 0.6448],
         [0.7971, 0.2383, 0.8744]], requires_grad=True)
-B2 = Tensor([0.8601, 0.5030, 0.2870], requires_grad=True)
+B2 = Tensor([67.8601, 534.5030, 547.2870], requires_grad=True)
 
 
-model = NNetwork((
+model = NNetwork([
             LLayer(12, 6,
                    _w_matrix=W1,
                    _b_vector=B1),
@@ -33,18 +33,41 @@ model = NNetwork((
                    _w_matrix=W2,
                    _b_vector=B2),
             Sigmoid()
-        ))
-optimizer = SGD(model.parameters())
+        ])
+
+#model.structure[-2].b_vector.grad = [122,133,23,23,33,32]
+#optimizer = SGD(model.structure, lr=1)
+#optimizer = SGD(model.parameters(), lr=1)
+
+print(model.structure[-2].w_matrix.data.dtype)
+
+# primo step
 output = model([0,4,3,4,5,6,4,3,56,6,3,4])
 loss = SELoss(output, [7.,-10.,3.])
 loss.mean().backward()
+print("Backprop N°1!")
+print(model.structure[-2].w_matrix.data.dtype)
 
+#print(f"print fuori dall'optimizer: {model.structure[0].b_vector}")
+#optimizer.step()
+#optimizer.zero_grad()
+#print(f"print fuori dall'optimizer: {model.structure[0].b_vector} (dovrebbe essere aggiornato)")
+print(f"vector grad: {model.structure[-2].b_vector.grad}")
 
-# NOTA: c'è differenza tra torch.Tensor e torch.tensor:
-# https://stackoverflow.com/questions/53201921/torch-tensor-with-requires-grad-parameter
-# NOTA: RuntimeError: Only Tensors of floating point and complex dtype can require gradients
-# https://discuss.pytorch.org/t/dont-understand-why-only-tensors-of-floating-point-dtype-can-require-gradients/158282
+# secondo step
+output = model([0,4,3,4,5,6,4,3,56,6,3,4])
+loss = SELoss(output, [1.,5.,2.])
+print("-----")
+loss.mean().backward()
+print("Backprop N°2!")
 
+print(f"vector grad: {model.structure[-2].b_vector.grad} (dovrebbe essere aggiornato)")
+#print(f"print fuori dall'optimizer: {model.structure[0].b_vector}")
+#optimizer.step()
+#optimizer.zero_grad()
+#print(f"print fuori dall'optimizer: {model.structure[0].b_vector} (dovrebbe essere aggiornato)")
+
+'''
 import torch
 sigmoid=torch.nn.Sigmoid()
 
@@ -93,8 +116,23 @@ print(B1.grad)
 print(model.structure[0].b_vector.grad)
 
 assert W1.grad == model.structure[0].w_matrix.grad
+'''
 
 
 
 #save_model_type1(model)
 
+
+import numpy as np
+
+k = np.sqrt(1/784)
+print(k)
+mu, sigma = 0, 1 # mean and standard deviation
+s = np.random.normal(mu, sigma, 10000)
+
+import matplotlib.pyplot as plt
+count, bins, ignored = plt.hist(s, 30, density=True)
+plt.plot(bins, 1/(sigma * np.sqrt(2 * np.pi)) *
+                np.exp( - (bins - mu)**2 / (2 * sigma**2) ),
+        linewidth=2, color='r')
+plt.show()
