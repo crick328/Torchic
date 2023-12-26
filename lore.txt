@@ -1,6 +1,6 @@
 Tentativi di implementazione from scratch delle reti neruali.
 Replica v1: pensavo che esistesse la classe neurone. Pensavo che fosse necessario creare classi speciali per input e output layer;
-Replica v2: pensavo che i pallini dei layer fossero i weights, non sapevo che le NN sono implementate con l'algebra
+Replica v2: pensavo che i pallini dei layer fossero i weights, non sapevo come le NN fossero implementate con l'algebra
             lineare, e quindi non sapevo nemmeno di weights matrix, vectors, ecc. Una volta scoperto, pensavo che
             tutti i layer andassero in una sola matrice (la weights matrix per l'appunto). Non mi spiegavo come
             potesse esistere una matrice aventi row con size diverse, ancor meno come potesse essere moltiplicata
@@ -14,4 +14,9 @@ Replica v4: ho imparato la backpropagation, rifatto tutto da zero per implementa
             (test6.py)
 replica v5: ho dovuto introdurre Numpy per la gestione di tutte le operazioni del tipo __operazione__ e __roperaione__. Ho scoperto che
             i gradient si sommano e che è nel mio migliore interesse non memorizzare quelli che non servono.
-            Ho rivisitato il vecchio codice di LLayer e NNetwork, creato la loss, introddo optimizers,
+            Ho rivisitato il vecchio codice di LLayer e NNetwork, creato la loss, introdotto optimizers e fatto dei training di test.
+            Dopo un bel po' di problemi tosti, il training finale è andato a buon fine grazie alla potenza degli init, che mi ha fatto
+            capire quanto siano fondamentali.
+            La sua versione finale permette di trainare, ma è ancora grezza. Ha raggiunto un 90% di test_acc su mnist 28x28.
+replica v6: la sintassi è stata rifinita, così come gli oggetti e i relativi metodi. Ora i modelli si possono salvare e caricare
+            in memoria. È iniziata la sfida per velocizzare il training

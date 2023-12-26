@@ -1,8 +1,6 @@
-from test10_tensor import Tensor
+from test11_tensor import Tensor
 import numpy as np
-#from numpy import exp
-
-# serve init module, usare dict dell'oggetto NN
+import init
 
 
 # Bisogna aggiustare la loss function. Non può essere SE, ma così:
@@ -15,12 +13,12 @@ def SELoss(predicted, target):
     - predicted: 1 dimensional Tensor object containing the output of the network
     - target: 1 dimensional Tensor object containing the desired output values
     '''
-    target = Tensor(target) if type(target) != Tensor else target
-    loss = Tensor(np.power(predicted-target, 2))
+    #target = Tensor(target) if type(target) != Tensor else target
+    loss = Tensor(np.power(predicted.data-target, 2))
     
     def _SELoss_backward(gradient):
         # non aggiorno il grad di loss perché la derivata di loss w.r.t. loss è 1
-        predicted.grad_fn(2*(predicted-target) * gradient)
+        predicted.grad_fn(Tensor(2*(predicted.data-target) * gradient.data))
         # rilascio il grafo computazionale in modo tale che il garbage collector possa cancellare le variabili inutili
         predicted.grad_fn = None
 
@@ -62,25 +60,32 @@ class Sigmoid():
 
 
 class ReLU():
-    def __call__(self, tensor_layer):
-        output = []
-        for value in tensor_layer.data:
-            output.append(max(0, value)) #value if value >= 0 else 0 )
+    def __call__(self, x):
+        #output = []
+        #for value in tensor_layer.data:
+            #output.append(max(0, value)) #value if value >= 0 else 0 )
+        output = Tensor(np.maximum(0, x.data))
 
         def _ReLU_backward(chain_rule_tensor):
-            partial_derivative = []
-            for value in tensor_layer.data:
-                partial_derivative.append( 1 if value >= 0 else 0 )
+            #partial_derivative = []
+            #for value in x.data:
+                #partial_derivative.append( 1 if value >= 0 else 0 )
+            #nums = np.where(nums > 0, 1, nums)
 
             #print(partial_derivative)
-            tensor_layer.grad += partial_derivative * chain_rule_tensor
-            tensor_layer.grad_fn(tensor_layer.grad)
+            #x.grad += partial_derivative * chain_rule_tensor
+            # crea overflow dopo una cinquantina di epochs
+            #x.grad += Tensor(np.where(x.data > 0, 1, x.data) * chain_rule_tensor.data)
+            # OCCHIO: QUESTO METODO MODIFICA X!
+            np.put(x.data, x.data.nonzero()[0], 1)
+            x.grad += Tensor(x.data * chain_rule_tensor.data)
+            x.grad_fn(x.grad)
 
-            tensor_layer.grad = None
-            tensor_layer.grad_fn = None
+            x.grad = None
+            x.grad_fn = None
 
-        output = Tensor(output)
-        if tensor_layer.requires_grad:
+        #output = Tensor(output)
+        if x.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
             # non è più considerato leaf tensor
             output.requires_grad = True
@@ -118,43 +123,35 @@ def softmax(tensor_layer):
         # non è più considerato leaf tensor
         output.requires_grad = True
         output.grad_fn = _softmax_backward
-    return output
-        
+    return output      
 
 
 
 # Linear Layer
 class LLayer():
-    def __init__(self, units: int, next_layer_size: int, _w_matrix=None, _b_vector=None):
-        self.w_matrix = self._init_weight_matrix(units, next_layer_size) if _w_matrix is None else _w_matrix
-        self.b_vector = self._init_bias_vector(units, next_layer_size) if _b_vector is None else _b_vector
-
-    def _init_weight_matrix(self, units, next_layer_size):
-        #return Tensor(np.random.uniform(low=-0.01, high=0.01, size=(units, next_layer_size)), requires_grad=True)
-        # He
-        k = np.sqrt(1/units)
-        # He uniform
-        #return Tensor(np.random.uniform(low=-k, high=k, size=(units, next_layer_size)), requires_grad=True)
-        # He normal (gaussiana)
-        return Tensor(np.random.normal(loc=0.0, scale=k, size=(units, next_layer_size)), requires_grad=True)
-    
-    def _init_bias_vector(self, units, next_layer_size):
-        #return Tensor(np.zeros(next_layer_size), requires_grad=True)
-        #return Tensor(np.random.uniform(low=-0.01, high=0.01, size=next_layer_size), requires_grad=True)
-        # He normal
-        k = np.sqrt(1/units)
-        #return Tensor(np.random.uniform(low=-k, high=k, size=next_layer_size), requires_grad=True)
-        return Tensor(np.random.normal(loc=0.0, scale=k, size=next_layer_size), requires_grad=True)
+    def __init__(self, n_input: int, n_output: int, _weights=None, _bias=None):
+        '''
+        n_input: number of values received
+        n_output: number of values returned
+        _weights: sets the value of the weight matrix. Used when loading a model and it's not intended
+            for user usage.
+        _bias: sets the value of the bias vector. Used when loading a model and it's not intended
+            for user usage.
+        '''
+        #self.weights = self._init_weight_matrix(n_input, n_output) if _weights is None else _weights
+        #self.bias = self._init_bias_vector(n_input, n_output) if _bias is None else _bias
+        self.weights = init.xavier_norm(n_input, n_output) if _weights is None else _weights
+        self.bias = init.xavier_norm(n_input, n_output, is_bias=True) if _bias is None else _bias
     
     def __call__(self, x):
-        return x.matmul(self.w_matrix) + self.b_vector
+        return x.matmul(self.weights) + self.bias
     
     def __str__(self):
         # metodo chiamato con print()
-        return f"LLayer(w_matrix = {self.w_matrix}, b_vector = {self.b_vector})"
+        return f"LLayer(weights = {self.weights}, bias = {self.bias})"
     
     def __repr__(self):
-        return f"LLayer(units={self.w_matrix.shape()[0]}, next_layer_size={self.b_vector.shape()[0]}, _w_matrix={repr(self.w_matrix)}, _b_vector={repr(self.b_vector)})"
+        return f"LLayer(n_input={self.weights.shape()[0]}, n_output={self.bias.shape()[0]}, _weights={repr(self.weights)}, _bias={repr(self.bias)})"
 
     def state_dict(self):
         return {
@@ -163,15 +160,19 @@ class LLayer():
             }
         }
 
+
+
 class NNetwork():
-    def __init__(self, structure):
-        # usa il self.__dict__!
-        self.structure = structure
+    def __init__(self, *args):
+        for i, element in enumerate(args):
+            self.__dict__[f"{element.__class__.__name__.lower()}{i}"] = element
 
     def forward(self, x):
-        x = Tensor(x) if type(x) != Tensor else x
-        for i in range(0, len(self.structure)):
-            x = self.structure[i](x)
+        assert type(x) == Tensor, f"Expected Tensor type object, received {type(x)}"
+
+        # itero gli args
+        for key in self.__dict__:
+            x = self.__dict__[key](x)
         return x
     
     def parameters(self):
@@ -181,24 +182,30 @@ class NNetwork():
         import copy
 
         output = []
-        for i in range(0, len(self.structure)):
-            if type(self.structure[i]) == LLayer:
-                output.append(copy.copy(self.structure[i]))
-                #output.append(copy.copy(self.structure[i].w_matrix))
-                #output.append(copy.copy(self.structure[i].b_vector))
-                #output.extend((copy.copy(self.structure[i].w_matrix), copy.copy(self.structure[i].b_vector)))
-                #output.append(copy.copy(self.structure[i].w_matrix.data))
-                #output.append(copy.copy(self.structure[i].w_matrix.grad))
-                #output.append(copy.copy(self.structure[i].b_vector.data))
-                #output.append(copy.copy(self.structure[i].b_vector.grad))
+        for key in self.__dict__:
+            if type(self.__dict__[key]) == LLayer:
+                output.append(copy.copy(self.__dict__[key]))
         return output
 
-    def state_dict(self):
+    def number_of_params(self):
         number_of_params = 0
-        for i in range(0, len(self.structure)):
-            if type(self.structure[i]) == LLayer:
-                number_of_params += self.structure[i].w_matrix.data.size + self.structure[i].b_vector.data.size
+        for key in self.__dict__:
+            if type(self.__dict__[key]) == LLayer:
+                number_of_params += self.__dict__[key].weights.data.size + self.__dict__[key].bias.data.size
         return number_of_params
+    
+    def state_dict(self):
+        nnetwork_class = self.__class__.__name__
+        output = {nnetwork_class: []}
+        for key in self.__dict__:
+            output[nnetwork_class].append(self.__dict__[key])
+        return
+    
+    def __repr__(self):
+        output = "NNetwork("
+        for key in self.__dict__:
+            output = output + f"{repr(self.__dict__[key])}, "
+        return output[0:-2] + ")"
 
     def __call__(self, x):
         return self.forward(x)
@@ -206,12 +213,10 @@ class NNetwork():
 
 import base64
 import gzip
-import ast
+#import ast
 
 def save_model_type1(model, filename="type1"):
-    json = model.state_dict()
-    #data = "{}".format(repr(model.structure)).encode()
-    data = "{}".format(json).encode()
+    data = "{}".format(repr(model)).encode()
     data = base64.b64encode(data)
     open(f"{filename}.rpl", "wb").write(gzip.compress(data)) # save data
 
@@ -219,4 +224,5 @@ def load_model_type1(filename):
     data = open(f"{filename}.rpl", "rb").read()
     data = gzip.decompress(data)
     data = base64.b64decode(data)
-    return ast.literal_eval(data.decode())[0]#data.decode()
+    #return ast.literal_eval(data.decode())[0]#data.decode()
+    return eval(data.decode())
