@@ -1,65 +1,29 @@
 import numpy as np
+#from numba import njit
 
 # NON PENSARE SUBITO ALL'OTTIMIZZAZIONE. Preoccupati di scrivere qualcosa che funziona
 # con le ''' puoi creare un commento visualizzabile quando usi la classe
-# flag "use_numpy"?
 # NOTA IMPORTANTISSIMA: gli array sono vettori algebrici "sdraiati", cioè con shape 1xN! Questo si riflette sulle matrici!
 
 
-# controlla se sono più veloci le tue dumb_matmul o conviene far fare la matmul a numpy
-# trova un modo per impedire di cambiare grad_fn a weight e bias (non è importante, tanto non sono chiamate). Pensavo di renderlo sempre immutabile e di assegnare il suo valore nelle funzioni con self.__dict__["grad_fn"]=)
-# > Non è chiara la questione di porre a np.zeros i grad solo perché grad+=...
-# https://pytorch.org/docs/stable/tensors.html#torch.Tensor.backward
-# verifica le alternative ai vari Tensor([1]*len(self.data))
-# porre a None le grad_fn per liberare memoria
-# non mi è chiaro come fa pytorch a calcolare i primi grad anche se sono None (non chiama zero_grad perché è un metodo dell'optim)
-# occhio perché hai un sacco di operazioni che restituiscono tensori senza grad_fn. Potrebbero interrompere tutta la backward!
-# è meglio così comunque, così non ti ritrovi con un super grafo di grad_fn che nessuno chiamerà mai
-# Nota: potresti star castando a Tensor dei risultati che sono già Tensor!
-# chiami grad_fn = None anche sui leaf tensor! Metti quelle condizioni dentro all'if is_leaf == False della backward
+
+# Nota: potresti star castando a Tensor dei risultati che sono già Tensor! Non c'è coerenza!
 # crea un mega commento con la struttura generale di tutte le operazioni con relativa backward, così hai un modello
 # chiaro da leggere e debuggare
-
-# SETTA A F16 o F8!
-
-
-def dumb_matmul1(matrix):
-    '''
-    Matrix multiplication between all-ones vector (matmul) and matrix
-    Anziché calcolarlo, sommo direttamente le colonne
-
-    :param p1: MxN tensor
-    :return: 1xN tensor, sum of the columns of the matrix
-    '''
-    #output = []
-    #for i in range(0, len(matrix)):
-        #result = 0
-        #for j in range(0, len(matrix[0])):
-            #result += matrix[i][j]
-        #output.append(result)
-    #return Tensor(output)
-    #print(matrix.sum(axis=1))
-    return Tensor(matrix.sum(axis=1))
-
-
-def dumb_matmul2(vector, columns):
-    '''
-    Matrix multiplication between all-ones matrix and vector.
-    Anzichè calcolarlo, compongo direttamente la matrice con n trasposte del vettore, dove n=columns
-
-    :param p1: 1xN tensor
-    :param p2: describe about parameter p2
-    :return: columns xN
-    '''
-    #output = []
-    #for i in range(0, len(vector)):
-        #output.append([vector[i]]*columns)
-    #return Tensor(output)
-    return Tensor(np.tile(vector, columns))
+# Controlla se la rete non si traina con certi init per gli exploding gradients
+# Torch riesce ad usare il 55-60% diCPU, tu solo la metà durante i picchi!
+# __setattr__ va eliminata per vedere quanto impatta
+# l'optim è l aparte più lenta di tutte, e di gran lunga
+# np.outer è più di due volte più lento di una matmul
+# Tensor.__add__ è chiamata quasi 1 milione di volte, è cruciale da velocizzare
+# Spendi tanto tempo in get e set. A tal proposito, può valer la pena usare gli slots, ma ho
+# sentito che su Python 3.11 hanno cambiato la gestione degli oggetti (e velocizzato python
+# stesso), quindi prima conviene scaricarlo
 
 
 
 class Tensor:
+    #__slots__ = ("data", "requires_grad", "is_leaf", "grad", "grad_fn")
     def __init__(self, data, requires_grad=False):
         '''
         data: array-like
@@ -82,7 +46,7 @@ class Tensor:
 
     def backward(self, gradient=None):
         '''
-        gradient: array-like richiesto se self.data non è uno scalare (cioè size!=1).
+        gradient: array-like richiesto se self.data non è uno scalare (cioè size != 1).
 
         Funzione richiamata sull'ultimo tensor (solitamente loss) per far partire la backprop.
         Inizia il processo di richiamo a catena delle funzioni (grad_fn) contenenti le derivate
@@ -93,7 +57,7 @@ class Tensor:
         if self.grad_fn is not None:
             if gradient is not None:
                 gradient = Tensor(gradient) if type(gradient) != Tensor else gradient
-                assert self.data.shape == gradient.data.shape, f"need gradient of shape {self.data.shape}, got {gradient.data.shape} instead."
+                #assert self.data.shape == gradient.data.shape, f"need gradient of shape {self.data.shape}, got {gradient.data.shape} instead."
                 self.grad_fn(gradient)
             elif self.size() == 1:
                 self.grad_fn(Tensor([1.]))
@@ -106,12 +70,14 @@ class Tensor:
         else:
             raise RuntimeError("You called .backward() two times in a row, but can't be computed again because the computational graph was freed.")
 
+    #@njit
     def matmul(self, other):
         # self: vector, other: matrix
         output = Tensor(np.matmul(self.data, other.data))
 
         def _matmul_backward(chain_rule_tensor):
             if self.requires_grad:
+                # d/dx = A.T
                 self.grad += Tensor(chain_rule_tensor @ other.data.T)
 
                 # se i tensor hanno parent, continuo la backprop
@@ -119,19 +85,18 @@ class Tensor:
                     self.grad_fn(self.grad)
                     # elimino il grad perché è un leaf tensor e non mi serve
                     self.grad = None
+                    self.grad_fn = None
 
             if other.requires_grad:
+                # d/dA = x.T
                 other.grad += Tensor(np.outer(self.data.T, chain_rule_tensor))
 
                 if other.is_leaf == False:
                     #print("PULISCO")
                     other.grad_fn(other.grad)
+                    # elimino i pointer in modo che il garbage collector possa cancellare le variabili inutili
                     other.grad = None 
-
-            # elimino i pointer in modo che il garbage collector possa cancellare le variabili inutili
-            # QUESTI NON VANNO QUI
-            self.grad_fn = None
-            other.grad_fn = None       
+                    other.grad_fn = None      
 
         if self.requires_grad or other.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
@@ -162,8 +127,8 @@ class Tensor:
                 self.grad_fn(self.grad)
                 # elimino il grad perché è un leaf tensor e non mi serve
                 self.grad = None
-            # elimino i pointer in modo che il garbage collector possa cancellare le variabili inutili
-            self.grad_fn = None
+                # elimino i pointer in modo che il garbage collector possa cancellare le variabili inutili
+                self.grad_fn = None
 
         if self.requires_grad:
             output.grad_fn = _mean_backward
@@ -196,23 +161,23 @@ class Tensor:
             if self.requires_grad:
                 # derivata parziale w.r.t self, cioè x. d/dx(x+a)=1 ==> d/dx(x+y)=1+0, cioè self con i valori a 1.
                 #self.grad += Tensor([1]*len(self.data)) * chain_rule_tensor
-                self.grad += Tensor(np.ones(self.data.shape)) * chain_rule_tensor
+                #self.grad += Tensor(np.ones(self.data.shape)) * chain_rule_tensor
+                self.grad += chain_rule_tensor
 
                 if self.is_leaf == False:
                     self.grad_fn(self.grad)
                     self.grad = None
+                    self.grad_fn = None
                     
             if other.requires_grad:
                 # derivata parziale w.r.t other, cioè y. d/dy(a+y)=1 ==> d/dy(x+y)=0+1, cioè other con i valori a 1.
-                other.grad += Tensor(self.data.shape) * chain_rule_tensor
+                #other.grad += Tensor(self.data.shape) * chain_rule_tensor
+                other.grad += chain_rule_tensor
 
                 if other.is_leaf == False:
                     other.grad_fn(other.grad)
                     other.grad = None
-            
-            # elimino i pointer in modo che il garbage collector possa cancellare le variabili inutili
-            self.grad_fn = None
-            other.grad_fn = None  
+                    other.grad_fn = None
         
         if self.requires_grad or other.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
@@ -229,29 +194,28 @@ class Tensor:
         return Tensor(other.data + self.data) if type(other) == Tensor else Tensor(other + self.data) if other is not None else self
 
     def __sub__(self, other):
-        assert type(other) == Tensor, f"sub operation is not defined between Tensor and {type(other)}."
         output = Tensor(self.data - other.data)
 
         def _sub_backward(chain_rule_tensor):
             if self.requires_grad:
                 # derivata parziale w.r.t self, cioè x. d/dx(x-a)=1 ==> d/dx(x-y)=1-0, cioè self con i valori a 1.
-                self.grad += Tensor(np.zeros(self.data.shape)) * chain_rule_tensor
+                #self.grad += Tensor(np.ones(self.data.shape)) * chain_rule_tensor
+                self.grad += chain_rule_tensor
 
                 if self.is_leaf == False:
                     self.grad_fn(self.grad)
                     self.grad = None
+                    self.grad_fn = None
 
             if other.requires_grad:
                 # derivata parziale w.r.t other, cioè y. d/dy(a-y)=-1 ==> d/dy(x-y)=0-1, cioè other con i valori a -1.
-                other.grad += Tensor([-1]*len(other.data)) * chain_rule_tensor
+                #other.grad += Tensor(-np.ones(other.data.shape)) * chain_rule_tensor
+                other.grad += -chain_rule_tensor
 
                 if other.is_leaf == False:
                     other.grad_fn(other.grad)
                     other.grad = None
-            
-            # elimino i pointer in modo che il garbage collector possa cancellare le variabili inutili
-            self.grad_fn = None
-            other.grad_fn = None
+                    other.grad_fn = None
 
         if self.requires_grad or other.requires_grad:
             output.requires_grad=True
@@ -283,8 +247,8 @@ class Tensor:
             if self.is_leaf == False:
                 self.grad_fn(self.grad)
                 self.grad = None
-            # elimino i pointer in modo che il garbage collector possa cancellare le variabili inutili
-            self.grad_fn = None
+                # elimino i pointer in modo che il garbage collector possa cancellare le variabili inutili
+                self.grad_fn = None
 
         if self.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
@@ -295,6 +259,8 @@ class Tensor:
 
     def __len__(self):
         return len(self.data)
+    
+    # VA ELIMINATA
     
     def __setattr__(self, attr, value):
         if hasattr(self, attr):
@@ -320,6 +286,7 @@ class Tensor:
                     if value is not None:
                         self.__dict__["is_leaf"] = False
         self.__dict__[attr] = value
+        
 
     def __getitem__(self, index):
         return self.data[index]

@@ -19,4 +19,6 @@ replica v5: ho dovuto introdurre Numpy per la gestione di tutte le operazioni de
             capire quanto siano fondamentali.
             La sua versione finale permette di trainare, ma è ancora grezza. Ha raggiunto un 90% di test_acc su mnist 28x28.
 replica v6: la sintassi è stata rifinita, così come gli oggetti e i relativi metodi. Ora i modelli si possono salvare e caricare
-            in memoria. È iniziata la sfida per velocizzare il training
+            in memoria. Le init sono state separate da tutto il resto del codice. È iniziata la sfida per velocizzare il training.
+replica v7: ho continuato ad ottimizzare fino a scendere a 3.8 minuti di training con l'update dei params ad ogni backward (in v5 ci
+            impiegavo 5.5 minuti, in v6 4.8).

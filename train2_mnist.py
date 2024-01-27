@@ -1,5 +1,5 @@
-import mnist    #https://github.com/datapythonista/mnist
-from PIL import Image
+import mnist    #https://github.com/datapythonista/mnist, pip install mnist
+
 
 one_hot_encoding_dict = {
     0: [1,0,0,0,0,0,0,0,0,0],
@@ -46,19 +46,21 @@ train_labels = labels_to_OHE(train_labels)
 total_test_samples, height, width = test_images.shape
 
 
-from test2_NNet import NNetwork, LLayer, Sigmoid, ReLU, SELoss, save_model_type1, load_model_type1
+from test2_NNet import NNetwork, LLayer, save_model_type1, load_model_type1
+import nn
 from optim import SGD
-from test11_tensor import Tensor
+#from test12_tensor_backup import Tensor
+from test13_tensor import Tensor
 
 model = NNetwork(
     LLayer(height*width, 500),
-    ReLU(),
+    nn.ReLU(),
     LLayer(500, 250),
-    ReLU(),
+    nn.ReLU(),
     LLayer(250, 100),
-    ReLU(),
+    nn.ReLU(),
     LLayer(100, 10),
-    Sigmoid()
+    nn.Softmax()
 )
 #print(model.state_dict())
 
@@ -70,12 +72,20 @@ epochs = 1
 batch_size = 300
 start = 0
 optimizer = SGD(model.parameters(), lr=0.01)
+loss_fn = nn.SELoss()
+
 
 print("Inizio training...")
 print(f"batch per epochs da fare: {total_train_samples/batch_size : .0f}")
+
+
+#import cProfile, pstats
+#import subprocess
+
+#profiler = cProfile.Profile()
+#profiler.enable()
 start_time = time.time()
 
-# se uso float16 sono lentissimo... che cazzo sto usando ora?
 
 for epoch in range(0, epochs):
     print(f"=== Epoch {epoch+1} ===")
@@ -86,7 +96,7 @@ for epoch in range(0, epochs):
         for i in range(start, start+batch_size):
             predicted = model(Tensor(train_images[i]))
             # su pytorch è una classe!
-            loss = SELoss(predicted, train_labels[i])
+            loss = loss_fn(predicted, train_labels[i])
             loss = loss.mean() # per stampare la loss
             loss.backward()
 
@@ -96,6 +106,9 @@ for epoch in range(0, epochs):
             loss_sum += loss
             if predicted.data.argmax() == train_labels[i].index(1):
                 correct_predictions += 1
+        
+        #optimizer.step()
+        #optimizer.zero_grad()
 
         start += batch_size
         print(f"batch {(start/batch_size) :.0f}, loss: {((loss_sum/batch_size*100).data):.1f}%, accuracy: {(correct_predictions/batch_size*100) :.1f}%")
@@ -112,6 +125,17 @@ for epoch in range(0, epochs):
 
 
 print(f"Fine training! Tempo impiegato: {((time.time() - start_time)/60):.1f} minuti")
+
+#profiler.disable()
+#stats = pstats.Stats(profiler).sort_stats('cumtime')#sort_stats('tottime')
+# Remove dir names
+#stats.strip_dirs()
+#stats.print_stats()
+#profiler.dump_stats("profiler_data2.prof")
+
+#subprocess.run(["snakeviz", "profiler_data2.prof"])
+
+
 #save_model_type1(model, "mnist 28x28")
 #model = load_model_type1("mnist 28x28")
 

@@ -59,7 +59,7 @@ model = nn.Sequential(
     nn.Linear(250, 100),
     nn.ReLU(),
     nn.Linear(100, 10),
-    nn.Sigmoid()
+    nn.Softmax(10) #nn.Sigmoid()
    )
 model = model.float()
 
