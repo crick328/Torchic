@@ -1,6 +1,10 @@
 import numpy as np
 #from numba import njit
 
+# L'unica salvezza per sfruttare la gpu (e quindi parallelizzare) e CuPy, che è il
+# pacchetto ufficiale di Python per CUDA.
+# https://medium.com/@geminae.stellae/introduction-to-gpu-programming-with-python-cuda-577bfdaa47f3
+
 # NON PENSARE SUBITO ALL'OTTIMIZZAZIONE. Preoccupati di scrivere qualcosa che funziona
 # con le ''' puoi creare un commento visualizzabile quando usi la classe
 # NOTA IMPORTANTISSIMA: gli array sono vettori algebrici "sdraiati", cioè con shape 1xN! Questo si riflette sulle matrici!
@@ -11,19 +15,25 @@ import numpy as np
 # crea un mega commento con la struttura generale di tutte le operazioni con relativa backward, così hai un modello
 # chiaro da leggere e debuggare
 # Controlla se la rete non si traina con certi init per gli exploding gradients
-# Torch riesce ad usare il 55-60% diCPU, tu solo la metà durante i picchi!
-# __setattr__ va eliminata per vedere quanto impatta
-# l'optim è l aparte più lenta di tutte, e di gran lunga
-# np.outer è più di due volte più lento di una matmul
-# Tensor.__add__ è chiamata quasi 1 milione di volte, è cruciale da velocizzare
-# Spendi tanto tempo in get e set. A tal proposito, può valer la pena usare gli slots, ma ho
-# sentito che su Python 3.11 hanno cambiato la gestione degli oggetti (e velocizzato python
-# stesso), quindi prima conviene scaricarlo
+# (Troppo presto) Torch riesce ad usare il 55-60% di CPU, tu solo la metà durante i picchi! => parallelizza con numba @jit(parallel=True)
+# occhio che devi commentare molto di più! fottitene se esce lungo, spiega cosa fai e perché!
+# puoi velocizzare ulteriormente il codice chiamando direttamente le variabili _
+
+# si riesce a fare una property per cancellare subito grad se is not leaf?
+
+# nel momento in cui si definisce un attributo come property, l'attributo nell'init deve avere un nome
+# diverso da quello del suo metodo property, altrimenti crea ricorsione (e spacca slots).
+# a tutti gli effetti, diventa privato.
+# (!) Bisogna costruire una sorta di documentazione/spiegazione delle implementazioni!
+# Crea un file apposito con funzioni per visualizzare i parametri/"modelli mentali" della rete e l'apprendimento durante il training
+# teoria Transformer: https://towardsdatascience.com/transformers-explained-visually-part-1-overview-of-functionality-95a6dd460452, ma
+# prima vedi se qualche libro gli spiega (Deep learning o il pdf che hai)
 
 
 
 class Tensor:
-    #__slots__ = ("data", "requires_grad", "is_leaf", "grad", "grad_fn")
+    __slots__ = ("data", "_requires_grad", "_is_leaf", "_grad_fn", "grad")
+
     def __init__(self, data, requires_grad=False):
         '''
         data: array-like
@@ -39,10 +49,52 @@ class Tensor:
             La variabile è None se il tensor è leaf. Viene automaticamente reimpostata a None dopo ogni passaggio.
         '''
         self.data = np.array(data) if type(data) != np.ndarray else data
-        self.is_leaf = True # aggiornato a False se si assegna una grad_fn
-        self.requires_grad = requires_grad
+        self._requires_grad = requires_grad
+        self._is_leaf = True
+        self._grad_fn = None
         self.grad = None
-        self.grad_fn = None
+
+    # NOTE: property, getter e setter causano un "rallentamento" incredibilmente
+    # trascurabile, sull'ordine dei 1*10^-5 e 1*10^-6 secondi in r/w in totale...
+
+    # definisco le property, necessario per poter
+    # definire i setter e quindi avere controllo sulla variabile
+    @property
+    def requires_grad(self) -> bool:
+        return self._requires_grad
+    
+    @property
+    def is_leaf(self) -> bool:
+        return self._is_leaf
+    
+    @property
+    def grad_fn(self):
+        return self._grad_fn
+    
+    # definisco i rispettivi setter
+    @requires_grad.setter
+    def requires_grad(self, value: bool):
+        # impedisco all'utente di cambiare la flag se il tensor fa parte della backprop
+        if self._is_leaf == False:
+            raise RuntimeError("you can only change requires_grad flags of leaf variables.")
+        else:
+            self._requires_grad = value
+    
+    @is_leaf.setter
+    def is_leaf(self, value):
+        # impedisco di cambiare la flag
+        raise AttributeError ("attribute 'is_leaf' of Tensor object is not writable.")
+
+    @grad_fn.setter
+    def grad_fn(self, value):
+        if value is not None:
+            # aggiornato a False perché si assegna una grad_fn
+            self._is_leaf = False
+            # da qua in avanti, requires_grad non sarà più modificabile perché
+            # non è più considerato leaf tensor
+            self._requires_grad = True
+        self._grad_fn = value
+
 
     def backward(self, gradient=None):
         '''
@@ -70,7 +122,6 @@ class Tensor:
         else:
             raise RuntimeError("You called .backward() two times in a row, but can't be computed again because the computational graph was freed.")
 
-    #@njit
     def matmul(self, other):
         # self: vector, other: matrix
         output = Tensor(np.matmul(self.data, other.data))
@@ -95,13 +146,12 @@ class Tensor:
                     #print("PULISCO")
                     other.grad_fn(other.grad)
                     # elimino i pointer in modo che il garbage collector possa cancellare le variabili inutili
+                    # potrei metterlo nel get di grad_fn
                     other.grad = None 
                     other.grad_fn = None      
 
         if self.requires_grad or other.requires_grad:
-            # da qua in avanti, requires_grad non sarà più modificabile perché
-            # non è più considerato leaf tensor
-            output.requires_grad = True
+            #output.requires_grad = True
             output.grad_fn = _matmul_backward
         return output
 
@@ -180,9 +230,6 @@ class Tensor:
                     other.grad_fn = None
         
         if self.requires_grad or other.requires_grad:
-            # da qua in avanti, requires_grad non sarà più modificabile perché
-            # non è più considerato leaf tensor
-            output.requires_grad = True
             output.grad_fn = _add_backward
         return output
     
@@ -218,7 +265,6 @@ class Tensor:
                     other.grad_fn = None
 
         if self.requires_grad or other.requires_grad:
-            output.requires_grad=True
             output.grad_fn=_sub_backward
         return output
         #return Tensor(self.data - other.data) if type(other) == Tensor else Tensor(self.data - other)
@@ -253,40 +299,11 @@ class Tensor:
         if self.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
             # non è più considerato leaf tensor
-            output.requires_grad = True
             output.grad_fn = _pow_backward
         return output
 
     def __len__(self):
         return len(self.data)
-    
-    # VA ELIMINATA
-    
-    def __setattr__(self, attr, value):
-        if hasattr(self, attr):
-            match attr:
-                case "requires_grad":
-                    # impedisco all'utente di cambiare la flag se il tensor è interno al grafo della backprop
-                    if self.is_leaf == False:
-                        raise RuntimeError("you can only change requires_grad flags of leaf variables.")
-                case "is_leaf":
-                    # se ho una grad_fn e mi stai settando is_leaf a True, te lo concedo
-                    if self.grad_fn is not None and value is True:
-                        # alcune volte ci sono dei leaf tensor che ricevono un aggiornamento dei valori, ma
-                        # questo li trasforma in non-leaf tensor. Perciò, devo risettarli manualmente a True.
-                        # Un esempio è l'aggiornamento dei params in .step()
-                        # Tuttavia, deprecherò questo metodo, in quanto, in quei casi, ti consiglio operare
-                        # con i .data
-                        pass
-                    else:
-                        # impedisco di cambiare la flag
-                        raise AttributeError ("attribute 'is_leaf' of Tensor object is not writable.")
-                case "grad_fn":
-                    # se me la setti ad un valore =/= da None, e quindi mi assegni una grad_fn, aggiorno la flag
-                    if value is not None:
-                        self.__dict__["is_leaf"] = False
-        self.__dict__[attr] = value
-        
 
     def __getitem__(self, index):
         return self.data[index]

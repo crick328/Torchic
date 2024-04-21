@@ -1,124 +1,110 @@
 import mnist    #https://github.com/datapythonista/mnist, pip install mnist
+from replica import nn, optim, CudaTensor, labels_to_OHE
+import time
+import random
 
 
-one_hot_encoding_dict = {
-    0: [1,0,0,0,0,0,0,0,0,0],
-    1: [0,1,0,0,0,0,0,0,0,0],
-    2: [0,0,1,0,0,0,0,0,0,0],
-    3: [0,0,0,1,0,0,0,0,0,0],
-    4: [0,0,0,0,1,0,0,0,0,0],
-    5: [0,0,0,0,0,1,0,0,0,0],
-    6: [0,0,0,0,0,0,1,0,0,0],
-    7: [0,0,0,0,0,0,0,1,0,0],
-    8: [0,0,0,0,0,0,0,0,1,0],
-    9: [0,0,0,0,0,0,0,0,0,1]
-}
+DEVICE = "cpu"
+PROFILER = False
+EPOCHS = 1
+BATCH_SIZE = 300
 
-def labels_to_OHE(labels):
-    output = []
-    for label in labels:
-        output.append(one_hot_encoding_dict[label])
-    return output
+#4.5 min su gpu (+-) w profiler (3.3 min no profiler float32 w nuova softmax)
+#3.8 min su cpu (?) w profiler
+
 
 def preprocess_images(images):
     output = []
     for image in images:
-        output.append(image.flatten()/255)
+        output.append(CudaTensor(image.flatten()/255, device=DEVICE))
     return output
-
-def preprocess_image(image):
-    return image.flatten()/255
 
 
 # vorrei renderle delle tuple ordinate con (img, label)
 train_images = mnist.train_images()
 train_labels = mnist.train_labels()
-total_train_samples = train_images.shape[0]
+#total_train_samples = train_images.shape[0]
 
 test_images = mnist.test_images()
 test_labels = mnist.test_labels()
 
-# preprocessing
+# preprocessing (entrambi liste di tensor)
+# prova tensor di tensor!
 train_images = preprocess_images(train_images)
-train_labels = labels_to_OHE(train_labels)
-#test_labels = labels_to_OHE(test_labels)
+train_labels = labels_to_OHE(train_labels, device=DEVICE)
+total_train_samples = len(train_images)
 
 total_test_samples, height, width = test_images.shape
+test_images = preprocess_images(test_images)
+test_labels = labels_to_OHE(test_labels, device=DEVICE)
 
 
-from test2_NNet import NNetwork, LLayer, save_model_type1, load_model_type1
-import nn
-from optim import SGD
-#from test12_tensor_backup import Tensor
-from test13_tensor import Tensor
-
-model = NNetwork(
-    LLayer(height*width, 500),
+model = nn.NNetwork(
+    nn.LLayer(height*width, 500),
     nn.ReLU(),
-    LLayer(500, 250),
+    nn.LLayer(500, 250),
     nn.ReLU(),
-    LLayer(250, 100),
+    nn.LLayer(250, 100),
     nn.ReLU(),
-    LLayer(100, 10),
-    nn.Softmax()
+    nn.LLayer(100, 10),
+    nn.Softmax(0)
 )
 #print(model.state_dict())
+model.to(DEVICE)
 
 
-import time
-import random
-
-epochs = 1
-batch_size = 300
 start = 0
-optimizer = SGD(model.parameters(), lr=0.01)
+optimizer = optim.SGD(model.parameters(), lr=0.01)
 loss_fn = nn.SELoss()
 
 
 print("Inizio training...")
-print(f"batch per epochs da fare: {total_train_samples/batch_size : .0f}")
+print(f"batch per epochs da fare: {total_train_samples/BATCH_SIZE : .0f}")
 
+if PROFILER:
+    import cProfile, pstats
+    import subprocess
 
-#import cProfile, pstats
-#import subprocess
-
-#profiler = cProfile.Profile()
-#profiler.enable()
+    profiler = cProfile.Profile()
+    profiler.enable()
 start_time = time.time()
 
 
-for epoch in range(0, epochs):
+# PERDI ANCORA TROPPO TEMPO NELL'OPTIMIZER!
+for epoch in range(0, EPOCHS):
     print(f"=== Epoch {epoch+1} ===")
     while start < total_train_samples:
         loss_sum = 0
         correct_predictions = 0
 
-        for i in range(start, start+batch_size):
-            predicted = model(Tensor(train_images[i]))
+        for i in range(start, start+BATCH_SIZE):
+            predicted = model(train_images[i])
             # su pytorch è una classe!
             loss = loss_fn(predicted, train_labels[i])
-            loss = loss.mean() # per stampare la loss
+            loss = loss.mean()
             loss.backward()
 
             optimizer.step()
             optimizer.zero_grad()
 
             loss_sum += loss
-            if predicted.data.argmax() == train_labels[i].index(1):
+
+            if predicted.data.argmax() == train_labels[i].data.argmax(): #train_labels[i].tolist().index(1):
                 correct_predictions += 1
-        
+
         #optimizer.step()
         #optimizer.zero_grad()
 
-        start += batch_size
-        print(f"batch {(start/batch_size) :.0f}, loss: {((loss_sum/batch_size*100).data):.1f}%, accuracy: {(correct_predictions/batch_size*100) :.1f}%")
+        start += BATCH_SIZE
+        print(f"batch {(start/BATCH_SIZE) :.0f}, loss: {((loss_sum/BATCH_SIZE*100).data):.1f}%, accuracy: {(correct_predictions/BATCH_SIZE*100) :.1f}%")
 
     # rimescolo il dataset con le labels
     temp = list(zip(train_images, train_labels))
     random.shuffle(temp)
-    train_images, retrain_labels = zip(*temp)
-    # res1 and res2 come out as tuples, and so must be converted to lists.
-    train_images, train_labels = list(train_images), list(train_labels)
+    train_images, train_labels = zip(*temp)
+    # train_images e train_labels sono restituite come tuple, quindi li ricasto
+    # train_images posso anche non riconvertirlo in lista... Tupla va bene
+    #train_images, train_labels = list(train_images), list(train_labels)
 
     start = 0
     optimizer.lr = optimizer.lr * 0.1
@@ -126,14 +112,15 @@ for epoch in range(0, epochs):
 
 print(f"Fine training! Tempo impiegato: {((time.time() - start_time)/60):.1f} minuti")
 
-#profiler.disable()
-#stats = pstats.Stats(profiler).sort_stats('cumtime')#sort_stats('tottime')
-# Remove dir names
-#stats.strip_dirs()
-#stats.print_stats()
-#profiler.dump_stats("profiler_data2.prof")
+if PROFILER:
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('cumtime')#sort_stats('tottime')
+    # Remove dir names
+    stats.strip_dirs()
+    stats.print_stats()
+    profiler.dump_stats("profiler_data2.prof")
 
-#subprocess.run(["snakeviz", "profiler_data2.prof"])
+    subprocess.run(["snakeviz", "profiler_data2.prof"])
 
 
 #save_model_type1(model, "mnist 28x28")
@@ -143,13 +130,11 @@ print(f"Fine training! Tempo impiegato: {((time.time() - start_time)/60):.1f} mi
 
 # auto eval
 correct_predictions = 0
-test_images = preprocess_images(test_images)
-test_labels = labels_to_OHE(test_labels)
 
 for index in range(0, len(test_images)):
-    predicted = model(Tensor(test_images[index]))
+    predicted = model(test_images[index])
 
-    if predicted.data.argmax() == test_labels[index].index(1):
+    if predicted.data.argmax() == test_labels[index].data.argmax():
         correct_predictions += 1
 
 print(f"Prediction corrette: {correct_predictions}/{total_test_samples}. Test accuracy: {correct_predictions/total_test_samples*100}%")

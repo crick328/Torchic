@@ -1,6 +1,10 @@
 import mnist    #https://github.com/datapythonista/mnist
 from PIL import Image
+import torch
+from torch import nn, optim, tensor, argmax, float32
 
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 one_hot_encoding_dict = {
     0: [1,0,0,0,0,0,0,0,0,0],
     1: [0,1,0,0,0,0,0,0,0,0],
@@ -49,8 +53,6 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-from torch import nn, optim, tensor, argmax, float32
-
 model = nn.Sequential(
     nn.Linear(height*width, 500),
     nn.ReLU(),
@@ -59,9 +61,10 @@ model = nn.Sequential(
     nn.Linear(250, 100),
     nn.ReLU(),
     nn.Linear(100, 10),
-    nn.Softmax(10) #nn.Sigmoid()
+    nn.Softmax() #nn.Sigmoid()
    )
 model = model.float()
+model.to(device)
 
 for name, param in model.named_parameters():
     if param.requires_grad:
@@ -90,8 +93,8 @@ for epoch in range(0, epochs):
         correct_predictions = 0
 
         for i in range(start, start+batch_size):
-            predicted = model(tensor(train_images[i], dtype=float32))
-            loss = loss_fn(predicted, tensor(train_labels[i], dtype=float32))
+            predicted = model(tensor(train_images[i], device=device, dtype=float32))
+            loss = loss_fn(predicted, tensor(train_labels[i], device=device, dtype=float32))
             #loss = loss.mean() # per stampare la loss
             loss.backward()
 

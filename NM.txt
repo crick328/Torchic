@@ -1,0 +1,27 @@
+Test e cose da implementare per lavorare sul nuovo modello di assistente
+(Advanced Sequential Transformer-based Assistant => A.S.T.A.?)
+
+
+- Database vettoriali:
+    Come fanno i modelli a sfruttarli?
+- Embedding networks:
+    Come si addestrano?
+    Come si usano nei db vettoriali?
+    Come stimare un numero realistico di neuroni di output (embedding size)?
+    Le nuove LLM usano delle varianti più recenti?
+- Tokenizers:
+    Come funzionano?
+- Transformers:
+    Quanta memoria e potenza di calcolo devo avere per il training? Posso fare qualcosa per ridurla (sia a livello di architettura sia di libreria)?
+    Come funziona il Transformers++?
+    Test implementazione Mix of Expert;
+    Test implementazione Rotationary Positional Encoding (RoPE);
+    Quanta differenza fa usare una sola lingua e limitare i tokens, tipo togliendo i numeri, le parole con poche occorrenze e i simboli come le parentesi?
+- Implementazione activation functions più moderne:
+    (c'è n'è una che è particolarmente popolare nei nuovi LLM);
+- Prompting & advanced techniques:
+    Come funziona la chain of thought? Esistono tecniche più recenti?
+    Come posso far interagire il modello con funzioni/API esterne?
+    Come funziona il Reinforcement Learning with Human Feedback? (https://www.youtube.com/watch?v=qGyFrqc34yc&pp=ygUXdW1hciBqYW1pbCB0cmFuc2Zvcm1lcnM%3D)
+    Come si quantizza un modello? Quali sono i pro e i contro?
+    Come si fa l'unione dei weigths di più reti neurali specialzzate in campi diversi? Che benefici e limiti ha?
