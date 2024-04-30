@@ -1,9 +1,11 @@
-from replica import CudaTensor, nn
+from torchic import Tensor, nn
 import numpy as np
 import cupy as cp 
 
 # Linear Layer (corrisponde al Dense layer di Tensorflow se quest'ultimo è settato con activation=None)
-class LLayer:
+class Linear:
+    __slots__ = ("weights", "bias")
+
     def __init__(self, n_input: int, n_output: int, _weights=None, _bias=None):
         '''
         n_input: number of values received
@@ -16,15 +18,15 @@ class LLayer:
         self.weights = nn.xavier_norm(n_input, n_output) if _weights is None else _weights
         self.bias = nn.xavier_norm(n_input, n_output, is_bias=True) if _bias is None else _bias
     
-    def __call__(self, x: CudaTensor) -> CudaTensor:
+    def __call__(self, x: Tensor) -> Tensor:
         return x.matmul(self.weights) + self.bias
     
     def __str__(self):
         # metodo chiamato con print()
-        return f"LLayer(weights = {self.weights.shape()}, bias = {self.bias.shape()})"
+        return f"Linear(weights = {self.weights.shape()}, bias = {self.bias.shape()})"
     
     def __repr__(self):
-        return f"LLayer(n_input={self.weights.shape()[0]}, n_output={self.bias.shape()[0]}, _weights={repr(self.weights)}, _bias={repr(self.bias)})"
+        return f"Linear(n_input={self.weights.shape()[0]}, n_output={self.bias.shape()[0]}, _weights={repr(self.weights)}, _bias={repr(self.bias)})"
 
     def state_dict(self):
         return {
@@ -35,7 +37,9 @@ class LLayer:
     
 
 class Embedding:
-    def __init__(self, vocab_size: int, embedding_size: int, _weights=None, _bias=None):
+    __slots__ = ("weights")
+
+    def __init__(self, vocab_size: int, embedding_size: int, _weights=None):
         '''
         Layer avente solo weight matrix e nessun bias. Funge da "lookup table", ovvero, dato in input
         un vettore codificato in one hot encoding (cioè un index), restituisce la rispettiva riga
@@ -51,7 +55,7 @@ class Embedding:
 
         Per la backprop, viene aggiornata una sola riga di weights alla volta, ovvero quella che viene usata.
         Infatti, essa verrà poi moltiplicata per la w_matrix del layer successivo che, una volta differenziata,
-        creerà il grad per la riga dell'embedding layer. Un LLayer aggiorna la w_matrix in un colpo solo,
+        creerà il grad per la riga dell'embedding layer. Un Linear aggiorna la w_matrix in un colpo solo,
         qui invece si creano diversi grad (che però si possono accumulare prima di aggiornare la matrice)
 
         vocab_size: number of values received
@@ -62,7 +66,7 @@ class Embedding:
         # questa matrix pare che giovi sempre dell'init della Xavier norm
         self.weights = nn.xavier_norm(vocab_size, embedding_size) if _weights is None else _weights
     
-    def __call__(self, x: CudaTensor) -> CudaTensor:
+    def __call__(self, x: Tensor) -> Tensor:
         return self.weights[np.nonzero(x)[0]]
     
     def __str__(self):
@@ -88,18 +92,19 @@ class Dropout:
     probability: valore compreso tra (0, 1). Corrisponde alla percentuale di valori
                  settati a zero.
     '''
+    __slots__ = ("p")
 
     def __init__(self, probability: float):
         self.p = probability
 
-    def forward(self, x: CudaTensor) -> CudaTensor:
+    def forward(self, x: Tensor) -> Tensor:
         # ho due possibilità:
         # - genero una lista di indici delle entrate da settare a 0
         # - genero un vettore con 0 e 1 e moltiplico
         # per ora opto per il primo approccio che occupa meno memoria e dovrebbe
         # richiedere meno risorse
 
-        # spiegazione parametri np.ranodm.choice:
+        # spiegazione parametri np.random.choice:
         # - range: intervallo in cui può estrarre i numeri. Settato a [0, len(x))
         # - size: len dell'output, quindi quanti indici restituisce. Settato a
         #         len(x) * probabilità, che equivale a dire 100% * 0.n = n%
@@ -110,7 +115,7 @@ class Dropout:
         return x * 1/(1 - self.p)
 
 
-class NNetwork:
+class Sequential:
     '''
     Questa classe si può usare in due modi:
     - chiami la classe e gli passi in input una lista/tupla contenente i layer e
@@ -120,12 +125,11 @@ class NNetwork:
       e activation function, ma così devi scriverti la forward tu.
     Questo funzionamento mimica Pytorch.
     '''
-
     def __init__(self, *args):
         for i, element in enumerate(args):
             self.__dict__[f"{element.__class__.__name__.lower()}{i}"] = element
 
-    def forward(self, x) -> CudaTensor:
+    def forward(self, x) -> Tensor:
         #assert type(x) == Tensor, f"Expected Tensor type object, received {type(x)}"
 
         # itero gli args
@@ -136,50 +140,50 @@ class NNetwork:
             x = self.__dict__[key](x)
         return x
     
-    def to(self, device):
-        for key in self.__dict__:
-            if type(self.__dict__[key]) == LLayer:
-                self.__dict__[key].weights.to(device)
-                self.__dict__[key].bias.to(device)
-            else:
-                self.__dict__[key]._xp = cp if device == "cuda" else np
+    
+    def to(self, device: str) -> None:
+        for elem in self.__dict__.values():
+            if type(elem) == Linear:
+                elem.weights.to(device)
+                elem.bias.to(device)
 
 
-    def parameters(self):
+    def parameters(self) -> list[Tensor]:
         """
         returns all trainable tensors of the model
         """
         params = []
 
-        for key in self.__dict__:
-            if type(self.__dict__[key]) == LLayer:
-                if self.__dict__[key].weights.requires_grad:
-                    params.append(self.__dict__[key].weights)
+        for elem in self.__dict__.values():
+            if type(elem) == Linear:
+                if elem.weights.requires_grad:
+                    params.append(elem.weights)
 
-                if self.__dict__[key].bias.requires_grad:
-                    params.append(self.__dict__[key].bias)
+                if elem.bias.requires_grad:
+                    params.append(elem.bias)
 
         return params
     
 
-    def number_of_params(self):
+    def number_of_params(self) -> int:
         number_of_params = 0
-        for key in self.__dict__:
-            if type(self.__dict__[key]) == LLayer:
-                number_of_params += self.__dict__[key].weights.data.size + self.__dict__[key].bias.data.size
+        for elem in self.__dict__.values():
+            if type(elem) == Linear:
+                number_of_params += elem.weights.data.size + elem.bias.data.size
         return number_of_params
     
-    def state_dict(self):
-        nnetwork_class = self.__class__.__name__
-        output = {nnetwork_class: []}
-        for key in self.__dict__:
-            output[nnetwork_class].append(self.__dict__[key])
+    def state_dict(self) -> dict:
+        Sequential_class = self.__class__.__name__
+        output = {Sequential_class: []}
+
+        for elem in self.__dict__.values():
+            output[Sequential_class].append(elem)
         return
     
     def __repr__(self):
-        output = "NNetwork("
-        for key in self.__dict__:
-            output = output + f"{repr(self.__dict__[key])}, "
+        output = "Sequential("
+        for elem in self.__dict__.values():
+            output = output + f"{repr(elem)}, "
         return output[0:-2] + ")"
 
     def __call__(self, x):

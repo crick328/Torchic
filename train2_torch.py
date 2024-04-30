@@ -1,5 +1,5 @@
 import mnist    #https://github.com/datapythonista/mnist, pip install mnist
-from torch import nn, optim, Tensor
+from torch import nn, optim, tensor, float32
 
 
 one_hot_encoding_dict = {
@@ -15,7 +15,7 @@ one_hot_encoding_dict = {
     9: [0,0,0,0,0,0,0,0,0,1]
 }
 DEVICE = "cpu"
-PROFILER = True
+PROFILER = False
 
 #4.5 min su gpu (+-) w profiler
 #3.8 min su cpu (?) w profiler
@@ -29,7 +29,7 @@ def labels_to_OHE(labels):
 def preprocess_images(images):
     output = []
     for image in images:
-        output.append(Tensor(image.flatten()/255, device=DEVICE))
+        output.append(tensor(image.flatten()/255, device=DEVICE, dtype=float32))
     return output
 
 
@@ -43,11 +43,10 @@ test_labels = mnist.test_labels()
 
 # preprocessing
 train_images = preprocess_images(train_images)
-train_labels = Tensor(labels_to_OHE(train_labels), device=DEVICE)
+train_labels = tensor(labels_to_OHE(train_labels), device=DEVICE, dtype=float32)
 
 
 total_test_samples, height, width = test_images.shape
-print(height)
 
 
 model = nn.Sequential(
@@ -70,7 +69,6 @@ import random
 epochs = 1
 batch_size = 300
 start = 0
-print(model._parameters)
 optimizer = optim.SGD(model.parameters(), lr=0.01)
 loss_fn = nn.MSELoss()
 
@@ -100,16 +98,16 @@ for epoch in range(0, epochs):
             loss = loss.mean()
             loss.backward()
 
-            #optimizer.step()
-            #optimizer.zero_grad()
+            optimizer.step()
+            optimizer.zero_grad()
 
             loss_sum += loss
 
             if predicted.data.argmax() == train_labels[i].argmax(): #train_labels[i].tolist().index(1):
                 correct_predictions += 1
 
-        optimizer.step()
-        optimizer.zero_grad()
+        #optimizer.step()
+        #optimizer.zero_grad()
 
         start += batch_size
         print(f"batch {(start/batch_size) :.0f}, loss: {((loss_sum/batch_size*100).data):.1f}%, accuracy: {(correct_predictions/batch_size*100) :.1f}%")
@@ -118,7 +116,6 @@ for epoch in range(0, epochs):
     temp = list(zip(train_images, train_labels.data))
     random.shuffle(temp)
     train_images, train_labels = zip(*temp)
-    print(train_labels)
     # train_images and train_labels come out as tuples, and so must be converted to lists.
     #train_images, train_labels = list(train_images), Tensor(train_labels, device=DEVICE)
 
@@ -147,7 +144,7 @@ if PROFILER:
 # auto eval
 correct_predictions = 0
 test_images = preprocess_images(test_images)
-test_labels = Tensor(labels_to_OHE(test_labels), device=DEVICE)
+test_labels = tensor(labels_to_OHE(test_labels), device=DEVICE, dtype=float32)
 
 for index in range(0, len(test_images)):
     predicted = model(test_images[index])

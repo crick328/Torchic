@@ -1,5 +1,6 @@
 Test e cose da implementare per lavorare sul nuovo modello di assistente
-(Advanced Sequential Transformer-based Assistant => A.S.T.A.?)
+(Advanced Sequential Transformer-based Assistant => ASTA?)
+(Experimental Sequential Transformer-based)
 
 
 - Database vettoriali:
@@ -13,10 +14,11 @@ Test e cose da implementare per lavorare sul nuovo modello di assistente
     Come funzionano?
 - Transformers:
     Quanta memoria e potenza di calcolo devo avere per il training? Posso fare qualcosa per ridurla (sia a livello di architettura sia di libreria)?
-    Come funziona il Transformers++?
+    Come funziona il Transformers++ (Llama, Phi ad esempio)?
     Test implementazione Mix of Expert;
     Test implementazione Rotationary Positional Encoding (RoPE);
     Quanta differenza fa usare una sola lingua e limitare i tokens, tipo togliendo i numeri, le parole con poche occorrenze e i simboli come le parentesi?
+    Ricerca su Group Query Attention (QGA);
 - Implementazione activation functions più moderne:
     (c'è n'è una che è particolarmente popolare nei nuovi LLM);
 - Prompting & advanced techniques:
@@ -25,3 +27,11 @@ Test e cose da implementare per lavorare sul nuovo modello di assistente
     Come funziona il Reinforcement Learning with Human Feedback? (https://www.youtube.com/watch?v=qGyFrqc34yc&pp=ygUXdW1hciBqYW1pbCB0cmFuc2Zvcm1lcnM%3D)
     Come si quantizza un modello? Quali sono i pro e i contro?
     Come si fa l'unione dei weigths di più reti neurali specialzzate in campi diversi? Che benefici e limiti ha?
+    Cos'e' l'augmented retrivial?
+    Come entrano in gioco e cosa fanno i "software wrapper" come Guard 2 o Code Shield (entrambi di Meta)?
+- Dataset:
+    Quanto impatta la qualita' dei dati?
+    La quantita' puo' ovviare una qualita' piu' bassa e viceversa?
+    E' vero che si puo' fare 95% in una lingua e il resto in decine e decine di lingue diverse perche' il modello riesce a trasferire la comprensione?
+    Con quali criteri si filtrano i dati buoni?
+    Come si processano in modo efficiente tonellate di dati?

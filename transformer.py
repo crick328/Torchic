@@ -14,7 +14,7 @@ Secondo, bisogna controllare che le backward funzionino a dovere.
 # la similarità del significato della stessa parola in contesti diversi grazie al dot product
 
 
-from replica import CudaTensor, nn
+from torchic import Tensor, nn
 import numpy as np
 
 
@@ -34,9 +34,10 @@ class InputEmbeddings:
         self.d_model = d_model
         self.embedding = nn.Embedding(vocab_size, d_model)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         # x è un vettore OHE
         # nel paper si moltiplica per la radice di d_model
+        # NOTE: non hai una MulBackward
         return self.embedding(x) * np.sqrt(self.d_model)
     
 
@@ -91,7 +92,7 @@ class PositionalEncoding:
         # pe_matrix: 1 (dummy dim) x seq_len (n° righe) x d_model (n° colonne)
         # x: 1 x embedding_size
         # Non capisco l'indexing... Aspetto a sbatterci ancora la testa, magari lo corregge più tardi
-        x = CudaTensor(x + self.pe_matrix[:, :x.shape[1], :], requires_grad = False)
+        x = Tensor(x + self.pe_matrix[:, :x.shape[1], :], requires_grad = False)
         return self.dropout(x)
     
 class LayerNormalization:
@@ -113,8 +114,8 @@ class LayerNormalization:
     def __init__(self, eps: float = 10**-6) -> None:
         self.eps = eps
         # scalari comuni per qualsiasi input
-        self.gamma = CudaTensor(1)
-        self.bias = CudaTensor(0)
+        self.gamma = Tensor(1)
+        self.bias = Tensor(0)
 
     def forward(self, x):
         # x è (batch_dim x 1 x embedding_size). Quel "axis=-1" indica che voglio
@@ -139,17 +140,20 @@ class FeedForwardBlock:
     def __init__(self, d_model: int, d_ff: int, dropout: float):
         # d_model x d_ff, nuovo parametro di questo layer
         # d_ff = 2048 nel paper
-        self.linear_layer1 = nn.LLayer(d_model, d_ff)
+        self.linear_layer1 = nn.Linear(d_model, d_ff)
         self.dropout = nn.Dropout(dropout)
-        self.linear_layer2 = nn.LLayer(d_ff, d_model)
+        self.linear_layer2 = nn.Linear(d_ff, d_model)
 
-    def forward(self, x) -> CudaTensor:
+    def forward(self, x) -> Tensor:
         # (batch x seq_len x d_model) -> (batch x seq_len x d_model)
         return self.linear_layer2( self.dropout( self.linear_layer1(x) ) )
     
 
 class MultiHeadAttention:
     # puoi parallelizzarla! Assegna un process a ciascuno dei tre forward
+    # OPPURE puoi combinarli in un unico layer! Costa meno overhead e sarebbe
+    # gia' tutto gestito!
+    # https://github.com/ajhalthor/Transformer-Neural-Network/blob/main/transformer.py
     '''
     Il vettore che riceve in input (embedding vector di dimensione n x seq_len x dim) viene
     striplicato e prende il nome di query, key e value vector. Ognuno di
@@ -158,31 +162,36 @@ class MultiHeadAttention:
     viene diviso in 64 vettori. Da qui si applica la formula dell'attention, si concatenano
     i risultati e il vettore trovato passa per un ultimo linear layer.
 
-    h: number of self attention heads
+    num_heads: number of self attention heads
     '''
-    def __init__(self, d_model: int, h: int, dropout: int):
-        if d_model % h != 0:
-            ValueError(f"Cannot divide evenly d_model of {d_model} times h {h} head attentions") 
+    def __init__(self, d_model: int, num_heads: int, dropout: int=None):
+        if d_model % num_heads != 0:
+            ValueError(f"Cannot divide evenly d_model of {d_model} times h {num_heads} head attentions") 
+        
         # dimensione della frammentazione dei singoli embeddings. Ogni attention head
         # prende una sottoparte di esso e hanno tutte le stesse dimensioni (batch x seq_len x d_k)
-        self.head_number = h
-        self.head_dim = d_model / h                     # d_k
-        self.query_layer = nn.LLayer(d_model, d_model)  # Wq
-        self.key_layer = nn.LLayer(d_model, d_model)    # Wk
-        self.value_layer = nn.LLayer(d_model, d_model)  # Wv
-        self.output_layer = nn.LLayer(d_model, d_model) # Wo
-        self.dropout = nn.Dropout(dropout)
+        self.num_heads = num_heads                      # h
+        self.head_dim = d_model / num_heads             # d_k
+        # NOTE: secondo l'indiano bravo, questi layer possono
+        # essere uniti in un grande unico layer, e ha senso!
+        self.query_layer = nn.Linear(d_model, d_model)  # Wq
+        self.key_layer = nn.Linear(d_model, d_model)    # Wk
+        self.value_layer = nn.Linear(d_model, d_model)  # Wv
+        self.output_layer = nn.Linear(d_model, d_model) # Wo
+        self.dropout = nn.Dropout(dropout) if dropout is not None else None
 
-        self.softmax = nn.Softmax()
+        self.softmax = nn.Softmax(-1)
 
-    def attention(self, splitted_q: CudaTensor.data, splitted_k: CudaTensor.data, splitted_v: CudaTensor.data, mask=None):
-        # scritto per chiarezza, ma puoi gestirlo come vuoi, l'importante è che
-        # il device dei tensor.data e della radice coincidano
+    # e se la rendo una nested function di forward? In questo modo posso fare x._device
+    # ed evitare di passare tutti questi parametroni enormi. Tanto questa funzione non
+    # la uso al di fuori del forward...
+    def attention(self, splitted_q: Tensor, splitted_k: Tensor, splitted_v: Tensor, mask=None) -> tuple[Tensor, Tensor]:
         device = splitted_q._device
 
         # formula applicata para para
+        # (batch x head_num x seq_len x head_dim) -> (batch x head_num x seq_len x seq_len)
         attention_scores = (splitted_q @ splitted_k.transpose(-2, -1)) / device.sqrt(self.head_dim)
-        if mask:
+        if mask is not None:
             # rimpiazzo con un valore piccolo; ci penserà poi la softmax a farlo
             # tendere a 0. Questo, ad esempio, sarà usato per i [PADDING] embedding
             # perché non devono interagire con il resto della frase.
@@ -192,12 +201,21 @@ class MultiHeadAttention:
             # o c'è un motivo?
             attention_scores = device.where(mask == 0, -1e9) # rimpiazza con ~ -inf
 
-        # devo fare la softmax solo sull'ultima dim, ma la mia non lo supporta...
+        # softmax solo sull'ultima dimensione
+        # (batch x head_num x seq_len x seq_len)
+        attention_scores = self.softmax(attention_scores)
+
+        if self.dropout is not None:
+            attention_scores = self.dropout(attention_scores)
+
+        # se vuoi visuallizzare gli scores, devi farlo prima di questa matmul
+        return (attention_scores @ splitted_v)
 
     # NOTE: questa è la parte che può causare più bug di tutte.
     # Ho dovuto aggiungere qualche metodo alla classe tensor e
     # non ho potuto usare le stesse funzioni di Jamir
-    def forward(self, x, q, k, v, mask=None):
+    # In teoria, reshape e transpose non dovrebbero aver bisogno di backward...
+    def forward(self, x, mask=None):
         '''
         mask: utilizzato per fare in modo che alcune parole non interagiscano tra di loro.
             Si imposta l'entrata della matrice ad un numero molto piccolo in modo che la
@@ -208,8 +226,6 @@ class MultiHeadAttention:
         key = self.key_layer(x)     # K'
         value = self.value_layer(x) # V'
         
-        # l'equivalente di torch.tensor.view è reshape, ma
-        # forse fa una copia dell'array e forse no.
         # Splitto la terza dim del tensor in due, facendola
         # passare da (batch x seq_len x d_model) a
         # (batch x seq_len x head_num x head_dim), infine traspongo
@@ -221,11 +237,80 @@ class MultiHeadAttention:
         # In soldoni, ogni head riceverà un vettore del tipo
         # (batch x 1 x seq_len x head_dim). Per chiarire, se sommassi i
         # vettori nella quarta dimensione, avrei (batch x 1 x seq_len x d_model)
-        # NOTE: occhio che potrebbe essere necessario ricastarlo a CudaTensor
-        # NOTE: potrei semplicemente chiamare x.data.shape in tutti e tre perché
-        # hanno le stesse shape, ma così è più chiaro
-        query = query.data.reshape(query.data.shape[0], query.data.shape[1], self.head_number, self.head_dim).transpose(1, 2)
-        key = key.data.reshape(key.data.shape[0], key.data.shape[1], self.head_number, self.head_dim).transpose(1, 2)
-        value = value.data.reshape(value.data.shape[0], value.data.shape[1], self.head_number, self.head_dim).transpose(1, 2)
 
-        x, attention_scores = self.attention(query, key, value, mask)
+        # (batch x seq_len x d_model) -> (batch x seq_len x head_num x head_dim) -> .T -> (batch x head_num x seq_len x head_dim)
+        query.data = query.data.reshape(query.data.shape[0], query.data.shape[1], self.num_heads, self.head_dim).transpose(1, 2)
+        key.data = key.data.reshape(key.data.shape[0], key.data.shape[1], self.num_heads, self.head_dim).transpose(1, 2)
+        value.data = value.data.reshape(value.data.shape[0], value.data.shape[1], self.num_heads, self.head_dim).transpose(1, 2)
+
+        x = self.attention(query, key, value, mask)
+        # rimetto seq_len al suo posto, ovvero passo da
+        # (batch x head_num x seq_len x head_dim) a (batch x seq_len x head_num x head_dim) e a (batch x seq_len x d_model)
+        x = x._device.ascontiguousarray(x.data.transpose(1,2)).reshape(x.data.shape[0], -1, self.num_heads * self.head_dim)
+
+        # (batch x seq_len x d_model) -> (batch x seq_len x d_model)
+        return self.output_layer(x)
+    
+    
+    def split(self, tensor: Tensor) -> Tensor:
+        """
+        split tensor by number of head
+
+        (le dim hanno una nomenclatura diversa, ma aiutano a dare un altro punto di vista)
+        :param tensor: [batch_size, length, d_model]
+        :return: [batch_size, head, length, d_tensor]
+
+        source: https://github.com/hyunwoongko/transformer/blob/master/models/layers/multi_head_attention.py#L41
+        """
+        # per assurdo potrebbe essere piu' veloce cosi' se e' vero che
+        # le reference by . sono nemiche delle performance e i metodi
+        # performano meglio se usano variabili dichiarate al loro interno.
+        # E' una doppia ottimizzazione e il codice diventa molto piu' chiaro!
+        batch_size, length, d_model = tensor.data.shape
+
+        return tensor.view(batch_size, length, self.num_heads, self.head_dim).transpose(1, 2)
+    
+
+class ResidualConnection:
+    '''
+    Classe che fa da wrapper ai blocchi multi head attention-add e norm
+    e ai feed forward-add e norm.
+    '''
+
+    def __init__(self, block: MultiHeadAttention|FeedForwardBlock, dropout: float) -> None:
+        self.block = block
+        self.dropout = nn.Dropout(dropout)
+        self.norm = LayerNormalization()
+
+    def forward(self, x: Tensor) -> Tensor:
+        # NOTE: nel paper applicano prima il blocco precedente e poi la normalization.
+        # Questa formula non mi risulta, uso quello che leggo dal paper
+        #return x + self.dropout( block( self.norm(x) ) )
+        return self.norm( x + self.dropout( self.block(x) ) )
+    
+
+# LAYER perche' sono di fila, NON in parallelo!
+class EncoderLayer:
+
+    def __init__(self, d_model: int, num_heads: int, dim_feed_forward: int, drop_prob: float) -> None:
+        self.sublayer1 = ResidualConnection(MultiHeadAttention(d_model=d_model, num_heads=num_heads), dropout=drop_prob)
+        self.sublayer2 = ResidualConnection(FeedForwardBlock(d_model=d_model, d_ff=dim_feed_forward, dropout=drop_prob), dropout=drop_prob)
+    
+    def forward(self, x: Tensor) -> Tensor:
+        return self.sublayer2(self.sublayer1(x))
+    
+# NOTE: torch ha una sua nomenclatura per ciascuno di essi (che l'indiano
+# simpatico ha seguito)! Copiala a fine lavoro
+
+# https://github.com/ajhalthor/Transformer-Neural-Network/blob/main/transformer.py
+# https://github.com/hyunwoongko/transformer/blob/master/models/layers/multi_head_attention.py#L41
+# https://github.com/hyunwoongko/transformer/blob/master/models/blocks/encoder_layer.py
+
+# c'e' un po' di riscrittura da fare. Molto codice lavora con np di default e molti
+# forward avvengono senza Tensor, cosa che non permette di fare la backward.
+# Ricorda: basta solo che tutte le operazioni che avvengono in un forward abbiano
+# un backward. Il resto puoi farlo senza passare per i tensor
+# Controlla se nei vari forward appaiono nuove funzioni che devono essere
+# implementate nei Tensor
+# Ordina anche i metodi della classe tensor in utility, basic funct (add, mul, ecc.)
+# e core funct (matmul, ecc.)

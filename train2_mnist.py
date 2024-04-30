@@ -1,5 +1,5 @@
 import mnist    #https://github.com/datapythonista/mnist, pip install mnist
-from replica import nn, optim, CudaTensor, labels_to_OHE
+from torchic import nn, optim, Tensor, labels_to_OHE
 import time
 import random
 
@@ -9,14 +9,19 @@ PROFILER = False
 EPOCHS = 1
 BATCH_SIZE = 300
 
-#4.5 min su gpu (+-) w profiler (3.3 min no profiler float32 w nuova softmax)
-#3.8 min su cpu (?) w profiler
+
+# 3.7 min su cpu no profiler np.float64 (grad come tensor)
+# 3.7 min su cpu no profiler np.float64 (grad come np|cp)
+# 3.7 min su cpu no profiler np.float64 (Sequential con slot e forward con e senza .values())
+# 5.4 min su cpu no profiler np.float32 (ma gradient con np.float64)
+# 2.2! min su cpu no profiler np.float32 (all)
+# 3.7 min su gpu no profiler (np).float32
 
 
 def preprocess_images(images):
     output = []
     for image in images:
-        output.append(CudaTensor(image.flatten()/255, device=DEVICE))
+        output.append(Tensor(image.flatten()/255, device=DEVICE))
     return output
 
 
@@ -39,14 +44,14 @@ test_images = preprocess_images(test_images)
 test_labels = labels_to_OHE(test_labels, device=DEVICE)
 
 
-model = nn.NNetwork(
-    nn.LLayer(height*width, 500),
+model = nn.Sequential(
+    nn.Linear(height*width, 500),
     nn.ReLU(),
-    nn.LLayer(500, 250),
+    nn.Linear(500, 250),
     nn.ReLU(),
-    nn.LLayer(250, 100),
+    nn.Linear(250, 100),
     nn.ReLU(),
-    nn.LLayer(100, 10),
+    nn.Linear(100, 10),
     nn.Softmax(0)
 )
 #print(model.state_dict())
@@ -68,7 +73,6 @@ if PROFILER:
     profiler = cProfile.Profile()
     profiler.enable()
 start_time = time.time()
-
 
 # PERDI ANCORA TROPPO TEMPO NELL'OPTIMIZER!
 for epoch in range(0, EPOCHS):

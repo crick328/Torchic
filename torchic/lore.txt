@@ -2,9 +2,11 @@ Tentativi di implementazione from scratch delle reti neruali.
 Replica v1: pensavo che esistesse la classe neurone. Pensavo che fosse necessario creare classi speciali per input e output layer;
 Replica v2: pensavo che i pallini dei layer fossero i weights, non sapevo come le NN fossero implementate con l'algebra
             lineare, e quindi non sapevo nemmeno di weights matrix, vectors, ecc. Una volta scoperto, pensavo che
-            tutti i layer andassero in una sola matrice (la weights matrix per l'appunto). Non mi spiegavo come
+            tutti i layer andassero in una sola matrice (la weight matrix per l'appunto). Non mi spiegavo come
             potesse esistere una matrice aventi row con size diverse, ancor meno come potesse essere moltiplicata
             per un vettore;
+Replica v3: tentato approccio alla backprop con idee di Karpathy, ma non solo mi sono reso conto di non aver capito come funziona, ma che il mio approccio
+            non riesco nemmeno a scriverlo sperimentalmente.
 Replica v4: ho imparato la backpropagation, rifatto tutto da zero per implementazione sintassi e logica migliore,
             però mi sono completamente bloccato nel momento in cui dovevo implementare la backprop.
             Ho provato vari approcci per venirne a capo e non sono riuscito a capire l'approccio di Karpathy.
@@ -22,3 +24,17 @@ replica v6: la sintassi è stata rifinita, così come gli oggetti e i relativi m
             in memoria. Le init sono state separate da tutto il resto del codice. È iniziata la sfida per velocizzare il training.
 replica v7: ho continuato ad ottimizzare fino a scendere a 3.8 minuti di training con l'update dei params ad ogni backward (in v5 ci
             impiegavo 5.5 minuti, in v6 4.8).
+replica v8: creati i CudaTensor. Ora è possibile trainare su GPU! Ho lavorato per renderlo "dinamico" e per non rendere ingarbugliata
+            la scrittura del codice futuro:
+            - sono riuscito a farli condividere lo stesso codice dalla classe Tensor della versione precedente in modo da non avere
+                il doppio della logica da scrivere, debuggare e mantenere. CudaTensor è a tutti gli effetti un'espansione della classe precedente;
+            - riadattato tutte le funzioni esterne alla classe CudaTensor per fare in modo che le loro operazioni avvengano dinamicamente
+                sul device del tensore a seconda di dove si trova;
+            - creato un sistema per fare in modo che il child tensor sia sullo stesso device senza specificarlo come parametro.
+            Ho ottimizzato sia per cpu che per gpu, optimizer incluso (per quanto possibile).
+            Ho implementato alcune funzioni helper per creare le ohe labels, rifinito la classe tensor e patchato degli errori nella
+            backprop di .mean(), .__add__() e .__sub__(). Aggiunto il type hinting a tutta la libreria.
+            Ho iniziato l'implementazione del Transofrmer, arrivando quasi a finire la Multi Head Attention. Ho reimplementato la softmax
+            per fare in modo che funzioni su una dimensione data (la backprop è stata un casino, grazie CHADGPT).
+torchic 1.0: refactoring della libreria e adattamento alla nomenclatura di PyTorch. Riscrittura di tutte le backward funct in un'unica
+            funzione.

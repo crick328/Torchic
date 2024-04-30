@@ -1,7 +1,12 @@
 import numpy as np
-import cupy as cp
-from replica import CudaTensor
+from torchic import Tensor
 
+
+def training_loop(model, train_data, loss, lr) -> None:
+    # idea, pero' il modello deve essere passato by reference
+    # banalmente dovrebbe bastare incapsularlo all'interno di un
+    # oggetto mutabile come una lista
+    pass
 
 
 def get_classes(labels: list):
@@ -40,20 +45,20 @@ def create_ohe_table(classes: list[int|str]) -> dict[int|str: str]:
     return ohe_dict
 
 
-def labels_to_OHE(labels: list, device: str="cuda") -> list[CudaTensor]:
+def labels_to_OHE(labels: list, device: str="cuda") -> list[Tensor]:
     CLASSES = get_classes(labels)
     OHE_DICT = create_ohe_table(CLASSES)
 
     output = []
     for label in labels:
-        output.append(CudaTensor(OHE_DICT[label], device=device))
+        output.append(Tensor(OHE_DICT[label], device=device))
     return output
 
 
-def memory_estimator(cls, data_type, dim):
+def memory_estimator(cls, data_manager, dim):
     '''
     cls: classe (np.array, cp.array, ecc.)
-    data_type: float32, float16, np.float32, ecc.
+    data_manager: float32, float16, np.float32, ecc.
     dim: 0, (1,1), (4,1), (30,30)
 
     all'interno devo avere un dict in cui è segnato il peso

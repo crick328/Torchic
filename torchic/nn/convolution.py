@@ -1,5 +1,5 @@
-from replica.tensor13 import Tensor
-import replica.nn.initializers as init
+from torchic.tensor13 import Tensor
+import torchic.nn.initializers as init
 import numpy as np
 
 # (non implementa le convolution come matmul, quindi no) https://www.youtube.com/watch?v=Lakz2MoHy6o
