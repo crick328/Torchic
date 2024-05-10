@@ -1,5 +1,8 @@
 => RULE OF THUMB: se devi solo fare operazioni sui .data e non ti serve la
    backprop, chiama solo quelli anziché tirare sempre in ballo i Tensor!
+=> RULE OF THUMB: tutti gli array usati ni forward devono essere tensori.
+   Perché? Perché anche se non richiedono gradient e non sono utili per il
+   crt, devono comunque essere sullo stesso device!
 
 Voglio anche implementare i seed. Sarebbero utilissimi per debuggare e
 sono anche molto curioso di sapere come funzionano (anche grazie a Minecraft).
@@ -11,14 +14,17 @@ Implementa qualcosa per visualizzare le distribuzioni dei valori nelle matrix
 Cerca di creare un modo per visualizzare l'architettura della rete
 (partendo dalle più semplici)
 
-Voglio implementare un modo semplice per quantizzare i modelli in modo tale da
-poter fare dei confronti
+Voglio implementare un modo semplice (e corretto) per quantizzare i modelli
 
 Manca tutta la visualizzazione delle stats di training, un file che contiene un
 resoconto a fine training e l'ETA
 + stima memoria occupata (pensavo di fare sizeof(vettore 2x1 - vettore 1x1) per
 sapere quanto occupa una cella (risultato) e quanto la base dell'oggetto (q.tà sottratta - n celle))
 
+Funzione helper pprint con l'andamento del trainig e l'ETA. Magari rendi il print un thread
+in modo da non avere rallentamenti (https://pypi.org/project/eta/)
+
+(!) Inizia a processare i dati di wikipedia!
 
 LIBRERIE
 cupy-cuda12x==13.0.0    (pip install cupy-cuda12x) 

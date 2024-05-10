@@ -4,31 +4,40 @@ Test e cose da implementare per lavorare sul nuovo modello di assistente
 
 
 - Database vettoriali:
-    Come fanno i modelli a sfruttarli?
+    Come fanno i modelli a sfruttarli? (cosine simil. - euclidian dist.)
 - Embedding networks:
     Come si addestrano?
     Come si usano nei db vettoriali?
     Come stimare un numero realistico di neuroni di output (embedding size)?
     Le nuove LLM usano delle varianti più recenti?
-- Tokenizers:
+    Come funziona Ada (solo testo)?;
+    Come funziona CLIP (embedda insieme testo e immagini)?;
+- Tokenizers (incidono molto sulle performance):
     Come funzionano?
 - Transformers:
     Quanta memoria e potenza di calcolo devo avere per il training? Posso fare qualcosa per ridurla (sia a livello di architettura sia di libreria)?
-    Come funziona il Transformers++ (Llama, Phi ad esempio)?
+    Come funziona il Transformers++ (Llama3 (pubblicheranno paper), Phi ad esempio)?
     Test implementazione Mix of Expert;
     Test implementazione Rotationary Positional Encoding (RoPE);
     Quanta differenza fa usare una sola lingua e limitare i tokens, tipo togliendo i numeri, le parole con poche occorrenze e i simboli come le parentesi?
-    Ricerca su Group Query Attention (QGA);
+    Ricerca su Group (Multi) Query Attention (QGA);
+    (https://github.com/hkproj/pytorch-llama/blob/main/Slides.pdf)
+    Come posso evitare la computazione di embeddings vuoti quando i token in input sono molto inferiori alla max context len?
+    Architetture con solo encoder o decoder (tipo i LLama): perche'? Come fanno a funzionare? Qaul e' l'intuizione?
 - Implementazione activation functions più moderne:
     (c'è n'è una che è particolarmente popolare nei nuovi LLM);
+    GeLU;
+    SwiGLU;
+    Layer aware delle activation function usate?
 - Prompting & advanced techniques:
     Come funziona la chain of thought? Esistono tecniche più recenti?
-    Come posso far interagire il modello con funzioni/API esterne?
+    Come posso far interagire il modello con funzioni/API esterne? (dando al modello una lista di tools di cui dispone, chiedendone di fargliene scegliere uno e fare una regex sull'output per chiamare la funzione scelta)
     Come funziona il Reinforcement Learning with Human Feedback? (https://www.youtube.com/watch?v=qGyFrqc34yc&pp=ygUXdW1hciBqYW1pbCB0cmFuc2Zvcm1lcnM%3D)
-    Come si quantizza un modello? Quali sono i pro e i contro?
+    Come si quantizza un modello? Quali sono i pro e i contro? (Jamil ha un video)
     Come si fa l'unione dei weigths di più reti neurali specialzzate in campi diversi? Che benefici e limiti ha?
-    Cos'e' l'augmented retrivial?
+    Cos'e' l'augmented retrivial (o Retrivial augmented generation)?
     Come entrano in gioco e cosa fanno i "software wrapper" come Guard 2 o Code Shield (entrambi di Meta)?
+    Come si usa la cosine similarity?
 - Dataset:
     Quanto impatta la qualita' dei dati?
     La quantita' puo' ovviare una qualita' piu' bassa e viceversa?

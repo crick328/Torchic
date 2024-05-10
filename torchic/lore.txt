@@ -37,4 +37,9 @@ replica v8: creati i CudaTensor. Ora è possibile trainare su GPU! Ho lavorato p
             Ho iniziato l'implementazione del Transofrmer, arrivando quasi a finire la Multi Head Attention. Ho reimplementato la softmax
             per fare in modo che funzioni su una dimensione data (la backprop è stata un casino, grazie CHADGPT).
 torchic 1.0: refactoring della libreria e adattamento alla nomenclatura di PyTorch. Riscrittura di tutte le backward funct in un'unica
-            funzione.
+            funzione. Aggiunto il supporto a float32 con conseguente speedup a 2.2 min su CPU (che straccia il vecchio record
+            mai piu' raggiunto di 3.5 min su CPU). Aggiunto supporto a global setting per default value di device e dtype con relativo
+            testing e rafforzamento del behavior per evitare tipi indesiderati/fuori controllo. Riscirttura di __device_manager().
+            Scrittura di alcune funzioni nuove con relative backward (view, unsqueeze, transpose, contiguous). 
+            Implementazione LogSoftmax. Fix del print delle metriche di training e implementazione della visualizzazione dei weights,
+            confusion matrix, distribuzione e connessioni dei neuroni di output.

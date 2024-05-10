@@ -1,8 +1,5 @@
-#import replica.nn
-#import replica.optim
-#from replica.tensor13 import Tensor
+from torchic.settings import set_defalt_device, set_defalt_dtype, get_default_device, get_default_dtype
 from torchic.cuda_tensor import Tensor
-from torchic.helper import create_ohe_table, get_classes, labels_to_OHE
+import torchic.helper as helper
 
-
-#dc = DeviceContext("cpu")
+from numpy import float64, float32, float16, int8

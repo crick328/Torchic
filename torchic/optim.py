@@ -18,5 +18,5 @@ class SGD():
     def step(self): 
         for param in self.parameters:
             param.data -= self.lr*param.grad
-            #print(param.grad.dtype)
+            #print(param.grad)
     # NOTA: dentro questa classe credo che sei libero di usare i return!

@@ -1,18 +1,18 @@
-# fonte utile per Xavier e Kaiming:
-# https://www.youtube.com/watch?v=ScWTYHQra5E
+# NOTE: facendo device = DEFAULT["dtype"] uso le chiavi del dict per specificare gli args
+# ai quali mi riferisco, quindi le chiavi del dict DEFAULT devono coincidere con
+# i nomi usati negli args dell'init di Tensor
 
 from torchic import Tensor
+from torchic.settings import DEFAULT
 import numpy as np # gli init possono sempre creare su cpu, tanto bisogna fare model.to(device)
 import warnings
 
-# NOTE: Se non specifichi "cpu" come device, questi tensori vengono creati
-# come np.float64!
 
 def naive_init(n_input, n_output):
-    return Tensor(np.random.uniform(low=0.0, high=1.0, size=(n_input, n_output)), requires_grad=True, device="cpu")
+    return Tensor(np.random.uniform(low=0.0, high=1.0, size=(n_input, n_output)), requires_grad=True, device = DEFAULT["device"])
 
 def naive_init_v2(n_input, n_output):
-    return Tensor(np.random.uniform(low=-0.01, high=0.01, size=(n_input, n_output)), requires_grad=True, device="cpu")
+    return Tensor(np.random.uniform(low=-0.01, high=0.01, size=(n_input, n_output)), requires_grad=True, device = DEFAULT["device"])
 
 # Chiamata anche Glorot initialization, in quanto l'autore si chiama Xavier Glorot
 # Le Xavier init sembrano più indicate per layer aventi tanh o sigmoid
@@ -20,18 +20,18 @@ def naive_init_v2(n_input, n_output):
 def xavier_uniform(n_input, n_output, is_bias=False):
     k = np.sqrt(6/(n_input + n_output))
     if is_bias:
-        return Tensor(np.random.uniform(low=-k, high=k, size=n_output), requires_grad=True, device="cpu")
+        return Tensor(np.random.uniform(low=-k, high=k, size=n_output), requires_grad=True, device = DEFAULT["device"])
     else:
-        return Tensor(np.random.uniform(low=-k, high=k, size=(n_input, n_output)), requires_grad=True, device="cpu")
+        return Tensor(np.random.uniform(low=-k, high=k, size=(n_input, n_output)), requires_grad=True, device = DEFAULT["device"])
 
 def xavier_norm(n_input, n_output, is_bias=False):
     # un po' di storia: https://medium.com/@shauryagoel/kaiming-he-initialization-a8d9ed0b5899
     # standard deviation
     stdv = np.sqrt(2/(n_input + n_output))
     if is_bias:
-        return Tensor(np.random.normal(loc=0.0, scale=stdv, size=n_output), requires_grad=True, device="cpu")
+        return Tensor(np.random.normal(loc=0.0, scale=stdv, size=n_output), requires_grad=True, device = DEFAULT["device"])
     else:
-        return Tensor(np.random.normal(loc=0.0, scale=stdv, size=(n_input, n_output)), requires_grad=True, device="cpu")
+        return Tensor(np.random.normal(loc=0.0, scale=stdv, size=(n_input, n_output)), requires_grad=True, device = DEFAULT["device"])
 
 # Chiamata anche He initialization, in quanto l'autore si chiama Kaiming He
 # Le Kaiming init sembrano più indicate per layer aventi la ReLU
@@ -47,7 +47,7 @@ def kaiming_uniform(n_input: int, n_output: int, mode: str = "fan_in", non_linea
         k = np.sqrt(6/n_input)
     else:
         k = np.sqrt(6/n_output)
-    return Tensor(np.random.uniform(low=-k, high=k, size=(n_input, n_output)), requires_grad=True, device="cpu")
+    return Tensor(np.random.uniform(low=-k, high=k, size=(n_input, n_output)), requires_grad=True, device=DEFAULT["device"])
 
 def kaiming_norm(n_input: int, n_output: int, mode: str = "fan_in", non_linearity: str = "relu"):
     # https://www.geeksforgeeks.org/kaiming-initialization-in-deep-learning/
@@ -59,4 +59,4 @@ def kaiming_norm(n_input: int, n_output: int, mode: str = "fan_in", non_linearit
         stdv = np.sqrt(2/n_input)
     else:
         stdv = np.sqrt(2/n_output)
-    return Tensor(np.random.normal(loc=0.0, scale=stdv, size=(n_input, n_output)), requires_grad=True, device="cpu")
+    return Tensor(np.random.normal(loc=0.0, scale=stdv, size=(n_input, n_output)), requires_grad=True, device=DEFAULT["device"])

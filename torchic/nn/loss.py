@@ -1,6 +1,4 @@
 from torchic.cuda_tensor import Tensor
-import numpy as np
-import cupy as cp
 
 
 # posso fare in modo che self._xp sia definito in base al tensor che riceve?
@@ -18,8 +16,12 @@ class SELoss:
         - x: Tensor object containing the output of the network (predicted)
         - target: Tensor.data object containing the desired output values
         '''
-        #target = Tensor(target) if type(target) != Tensor else target
+        #print(x.data.dtype)
         loss = Tensor(x._device.power(x.data - target.data, 2))
+        #print(x._device.power(x.data - target.data, 2).dtype)
+        # il config e' giusto, ma questo tensore si istanzia come float32...
+        #print(loss.data.dtype)
+        #print(DEFAULT['dtype'])
         
         def _SELoss_backward(gradient: Tensor) -> None:
             # non aggiorno il grad di loss perché la derivata di loss w.r.t. loss è 1

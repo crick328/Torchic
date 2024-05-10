@@ -2,11 +2,44 @@ from torchic import Tensor, nn
 import numpy as np
 import cupy as cp 
 
+# si puo' creare una classe Module nel momento in cui vedi che ci sono delle
+# cose che sono uguali per ogni classe. Ad esempio, Linear e Sequential hanno
+# entrambi bisogno di un metodo che cambi device e che permetta di salvare su
+# file. Quando ne avrai bisongo, implementalo.
+# Esempio:
+class Module:
+    def __init__(self):
+        pass
+
+    def state_dict(self):
+        sd = dict()
+        sd[self.__class__.__name__]={}
+
+        for identifier, value in self.__dict__.items():
+            # ammesso che value non sia di nuovo un Module...
+            # Senno' devo nestare
+            sd[self.__class__.__name__][identifier] = value
+        pass
+
+    def load_state_dict(self):
+        pass
+
+    def to(self, device: str):
+        pass
+
+    # modes
+    def train(self):
+        pass
+
+    def eval(self):
+        pass
+    
+
 # Linear Layer (corrisponde al Dense layer di Tensorflow se quest'ultimo è settato con activation=None)
 class Linear:
-    __slots__ = ("weights", "bias")
+    __slots__ = ("has_bias", "weights", "bias")
 
-    def __init__(self, n_input: int, n_output: int, _weights=None, _bias=None):
+    def __init__(self, n_input: int, n_output: int, bias=True, _weights=None, _bias=None):
         '''
         n_input: number of values received
         n_output: number of values returned
@@ -15,11 +48,15 @@ class Linear:
         _bias: sets the value of the bias vector. Used when loading a model and it's not intended
             for user usage.
         '''
+        self.has_bias = bias
         self.weights = nn.xavier_norm(n_input, n_output) if _weights is None else _weights
-        self.bias = nn.xavier_norm(n_input, n_output, is_bias=True) if _bias is None else _bias
+        if bias:
+            self.bias = nn.xavier_norm(n_input, n_output, is_bias=True) if _bias is None else _bias
     
     def __call__(self, x: Tensor) -> Tensor:
-        return x.matmul(self.weights) + self.bias
+        #return x.matmul(self.weights) + self.bias
+        x = x.matmul(self.weights)
+        return x + self.bias if self.has_bias else x
     
     def __str__(self):
         # metodo chiamato con print()
@@ -129,6 +166,7 @@ class Sequential:
         for i, element in enumerate(args):
             self.__dict__[f"{element.__class__.__name__.lower()}{i}"] = element
 
+
     def forward(self, x) -> Tensor:
         #assert type(x) == Tensor, f"Expected Tensor type object, received {type(x)}"
 
@@ -145,7 +183,8 @@ class Sequential:
         for elem in self.__dict__.values():
             if type(elem) == Linear:
                 elem.weights.to(device)
-                elem.bias.to(device)
+                if elem.has_bias:
+                    elem.bias.to(device)
 
 
     def parameters(self) -> list[Tensor]:
@@ -159,7 +198,7 @@ class Sequential:
                 if elem.weights.requires_grad:
                     params.append(elem.weights)
 
-                if elem.bias.requires_grad:
+                if elem.has_bias and elem.bias.requires_grad:
                     params.append(elem.bias)
 
         return params
@@ -169,7 +208,9 @@ class Sequential:
         number_of_params = 0
         for elem in self.__dict__.values():
             if type(elem) == Linear:
-                number_of_params += elem.weights.data.size + elem.bias.data.size
+                number_of_params += elem.weights.data.size
+                if elem.has_bias:
+                    number_of_params += elem.bias.data.size
         return number_of_params
     
     def state_dict(self) -> dict:
@@ -179,6 +220,23 @@ class Sequential:
         for elem in self.__dict__.values():
             output[Sequential_class].append(elem)
         return
+    
+    # queste funzioni sono solo per chiarezza in quanto si puo'
+    # accedere ai singoli params con model.linear0.bias ad es.
+    def get_layer(self, name: str) -> Tensor|tuple[Tensor]:
+        # Se modifico gli attributi del return modifico?
+        # Se ritorno sempre una lista si in teoria
+        try:
+            layer = self.__getattribute__(name)
+        except NameError:
+            print(f"Model does not have {name} layer."
+                  "Maybe you forgot the number at the end of the name?")
+            
+        return layer
+    
+    def set_layer_attr(self, layer_name, attr_name, attr_value):
+        setattr(self.__dict__[layer_name], attr_name, attr_value)
+        
     
     def __repr__(self):
         output = "Sequential("

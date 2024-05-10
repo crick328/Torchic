@@ -38,7 +38,8 @@ class ReLU:
 
         def _ReLU_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
             x._backward(
-                self_grad=(x._device.where(x.data > 0, 1, 0) * cr_grad).astype(x._device.float32)
+                #self_grad=(x._device.where(x.data > 0, 1, 0) * cr_grad).astype(x._device.float32)
+                self_grad=x._device.where(x.data > 0, 1, 0) * cr_grad
             )
 
         if x.requires_grad:
@@ -86,3 +87,43 @@ class Softmax:
     
     def __repr__(self):
         return f"Softmax(dim={self.dim})"
+    
+
+class LogSoftmax:
+    __slots__ = ("dim")
+
+    # Può essere calcolata solo su una dimensione
+    def __init__(self, dim=0) -> None:
+        self.dim = dim
+
+    def __call__(self, x: Tensor) -> Tensor:
+        # questa singola linea di codice previene overflow senza modificare
+        # l'efficacia del gradient.
+        #shiftx = x.data - x.data.max(axis=self.dim, keepdims=True)
+        #logsumexp = x._device.log(x._device.exp(shiftx).sum(axis=self.dim, keepdims=True))
+        #softmax = Tensor(x.data - shiftx - logsumexp)
+
+        shiftx = x.data - x.data.max(axis=self.dim, keepdims=True)  # Sottrai il massimo per evitare l'overflow
+        softmax = Tensor(shiftx - x._device.log(x._device.exp(shiftx).sum(axis=self.dim, keepdims=True)))  # Calcola il log del softmax
+
+        # NOTE: riciclare il calcolo della softmax è geniale! Fallo ovunque!
+        def _log_softmax_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
+            '''
+            la derivata della softmax è una matrice. Ogni colonna rappresenta una sua
+            derivata completa w.r.t. un input
+            '''
+            # Con bruteforce di CHADGPT e match di logica della softmax, ecco una
+            # derivata di cui al momento non so assolutamente nulla sulla
+            # sua derivazione matematica!
+            x._backward(
+                self_grad=cr_grad - x._device.exp(softmax.data) * cr_grad.sum(axis=self.dim, keepdims=True)
+            )
+
+        if x.requires_grad:
+            # da qua in avanti, requires_grad non sarà più modificabile perché
+            # non è più considerato leaf tensor
+            softmax.grad_fn = _log_softmax_backward
+        return softmax
+    
+    def __repr__(self):
+        return f"LogSoftmax(dim={self.dim})"

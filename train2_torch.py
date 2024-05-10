@@ -57,9 +57,15 @@ model = nn.Sequential(
     nn.Linear(250, 100),
     nn.ReLU(),
     nn.Linear(100, 10),
-    nn.Softmax(0)
+    #nn.Softmax(0)
+    nn.LogSoftmax(0)
 )
-#print(model.state_dict())
+
+print(model.0)
+for name, layer in model.named_modules():
+    #if isinstance(layer, torch.nn.Conv2d):
+    print(name)
+    print(name, layer)
 model.to(DEVICE)
 
 
@@ -88,7 +94,7 @@ start_time = time.time()
 for epoch in range(0, epochs):
     print(f"=== Epoch {epoch+1} ===")
     while start < total_train_samples:
-        loss_sum = 0
+        epoch_loss = 0
         correct_predictions = 0
 
         for i in range(start, start+batch_size):
@@ -101,7 +107,7 @@ for epoch in range(0, epochs):
             optimizer.step()
             optimizer.zero_grad()
 
-            loss_sum += loss
+            epoch_loss += loss
 
             if predicted.data.argmax() == train_labels[i].argmax(): #train_labels[i].tolist().index(1):
                 correct_predictions += 1
@@ -110,7 +116,7 @@ for epoch in range(0, epochs):
         #optimizer.zero_grad()
 
         start += batch_size
-        print(f"batch {(start/batch_size) :.0f}, loss: {((loss_sum/batch_size*100).data):.1f}%, accuracy: {(correct_predictions/batch_size*100) :.1f}%")
+        print(f"batch {(start/batch_size) :.0f}, loss: {((epoch_loss/batch_size*100).data):.1f}%, accuracy: {(correct_predictions/batch_size*100) :.1f}%")
 
     # rimescolo il dataset con le labels
     temp = list(zip(train_images, train_labels.data))
