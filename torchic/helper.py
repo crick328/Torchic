@@ -7,55 +7,78 @@ import pandas as pd
 import time
 import datetime
 import random
+from torchic.settings import DEFAULT
+from os import path
 
 
 class Metrics:
-    def __init__(self):
+    def __init__(self, n_epochs: int):
         self.training_id = f'training-{datetime.datetime.now().strftime("%d/%m/%Y-%H_%M")}'
         self.t_accuracy = []
         self.t_loss = []
         self.e_accuracy = []
         self.e_loss = []
         self.training_time = time.time()
+        self.curr_epoch = 1
+        self.epochs = n_epochs
 
     def save_metrics(self, filename: str=None, dir: str="metrics"):
         # csv o json?
+        # credo che json sia meglio per salvare le varie acc e loss
         if filename is None:
-            filename = f"{self.training_id}.csv"
+            filename = f"{self.training_id}.json"
 
     def load_metrics(filename: str) -> Self:
         pass
 
-    def plot_metrics(self):
+    def show_metrics(self, filename=None):
         # plotta andamento metriche (con training_id)
-        pass
+        fig, axs = plt.subplots(nrows=1, ncols=2)
+        fig.suptitle(self.training_id)
 
-    def _calc_train_time(self):
-        self.training_time = time.time() - self.training_time
+        # train
+        axs[0].plot(self.t_accuracy, color="blue", label="train acc")
+        axs[0].plot(self.t_loss, color="red", label="train loss")
+        axs[0].grid(True)
+
+        # eval
+        axs[1].plot(self.e_accuracy, color="cyan", label="eval acc")
+        axs[1].plot(self.e_loss, color="orange", label="eval loss")
+        axs[1].grid(True)
+        
+        fig.legend(loc="upper left")
+
+        if filename:
+            fig.savefig(path.join(DEFAULT["img_dir"], filename))
+
+        fig.show()
+        fig.waitforbuttonpress()
+
+    def _calc_train_time(self) -> None:
+        '''Calc training time in minutes'''
+        self.training_time = (time.time() - self.training_time) / 60
 
     def _resume_training():
         pass
 
-    def _print_formatted_metrics(self,
-                                curr_iter,
-                                curr_epoch,
-                                epochs,
-                                batch_size,
-                                n_batch,
-                                acc,
-                                loss,
-                                is_eval: bool=False,
-                                to_save: bool=False):
+    def _print_metrics(self,
+                        acc: float,
+                        loss: float,
+                        eval_acc: float=None,
+                        eval_loss: float=None) -> None:
         
-        print(f"Epoch {curr_epoch}/{epochs}, batch {(curr_iter/batch_size) :.0f}/{int(n_batch) :.0f}, accuracy: {acc :.1f}%, loss: {loss :.1f}%")
-        
-        if to_save:
-            if not is_eval:
-                self.t_accuracy.append(acc)
-                self.t_loss.append(loss)
-            else:
-                self.e_accuracy.append(acc)
-                self.e_loss.append(loss)
+        self.t_accuracy.append(acc)
+        self.t_loss.append(loss)
+
+        info = f"Epoch {self.curr_epoch}/{self.epochs}, train acc: {acc :.1f}%, train loss: {loss :.1f}%"
+        self.curr_epoch += 1
+
+        if eval_acc:
+            self.e_accuracy.append(eval_acc)
+            self.e_loss.append(eval_loss)
+            info += f", eval accuracy: {acc :.1f}%, eval loss: {loss :.1f}%"
+
+        print(info)
 
 
 def supervised_training(model: nn.Sequential,
@@ -68,9 +91,10 @@ def supervised_training(model: nn.Sequential,
                         eval: list[Tensor]=None,
                         eval_labels: list[Tensor]=None,
                         checkpoint_interval: int=None,
-                        print_metrics: bool=True) -> None|Metrics:
+                        print_metrics: bool=True) -> Metrics:
     
-    start_time = time.time()
+    metrics = Metrics(epochs)
+    print("Training iniziato!")
 
     for epoch in range(1, epochs+1):
         epoch_loss = 0
@@ -96,10 +120,6 @@ def supervised_training(model: nn.Sequential,
 
             current_iter += batch_size
 
-            if print_metrics:
-                # fallo inline possibilmente
-                print(f"Epoch {epoch}/{epochs}, batch {(current_iter/batch_size) :.0f}/{int(len(train)/batch_size) :.0f}, loss: {(epoch_loss/current_iter*100):.1f}%, accuracy: {(correct_predictions/current_iter*100) :.1f}%")
-
         # rimescolo il dataset con le labels
         temp = list(zip(train, train_labels))
         random.shuffle(temp)
@@ -122,28 +142,41 @@ def supervised_training(model: nn.Sequential,
 
                 if predicted.data.argmax() == eval_labels[i].data.argmax():
                     eval_preds += 1
-            print(f"Eval accuracy: {eval_preds / len(eval) * 100 : .2f}%, Eval loss: {eval_loss / len(eval) * 100 : .2f}%")
 
-        if print_metrics:
-            epoch_min = (time.time() - t) / 60
-            print(f"ETA: { epoch_min * (epochs - epoch) : .1f} minuti")
+            # se vuoi l'eval do per scontato che vuoi saperne anche le performance
+            metrics._print_metrics(acc=correct_predictions/current_iter * 100,
+                                loss=epoch_loss/current_iter * 100,
+                                eval_acc=eval_preds/len(eval) * 100,
+                                eval_loss=eval_loss/len(eval) * 100)
 
-    print(f"Fine training! Tempo impiegato: {((time.time() - start_time)/60):.1f} minuti")
+        elif print_metrics:
+            metrics._print_metrics(acc=correct_predictions/current_iter * 100,
+                                loss=epoch_loss/current_iter * 100)
+
+        epoch_min = (time.time() - t) / 60
+        print(f"ETA: { epoch_min * (epochs - epoch) : .1f} minuti")
+
+    metrics._calc_train_time()
+    print(f"Fine training! Tempo impiegato: {metrics.training_time :.1f} minuti")
+    return metrics
 
 
 def show_confusion_matrix(predictions, ground_truth, normalize: bool=False, filename=None):
     actual = pd.Series(ground_truth, name='Actual')
     pred = pd.Series(predictions, name='Predicted')
     df_confusion = pd.crosstab(actual, pred)
+
     if normalize:
         df_confusion = df_confusion.div(df_confusion.sum(axis=1), axis="index")
 
     plt.matshow(df_confusion, cmap=plt.cm.Blues)
     plt.title("Confusion matrix")
     plt.colorbar()
+
     tick_marks = np.arange(len(df_confusion.columns))
     plt.xticks(tick_marks, df_confusion.columns, rotation=45)
     plt.yticks(tick_marks, df_confusion.index)
+
     #plt.tight_layout()
     plt.ylabel(df_confusion.index.name)
     plt.xlabel(df_confusion.columns.name)
@@ -187,12 +220,12 @@ def show_out_connections(w_matrix: Tensor, graph_name: str=None):
         # vmin e vmax sono gli estremi in cui normalizza i dati
         axs[1][i].matshow(out_conn[i].reshape(target_shape), cmap=plt.cm.Blues)
         axs[1][i].set_title(i)
-    
-    fig.show()
-    fig.waitforbuttonpress()
 
     if graph_name:
         fig.savefig(f"{graph_name}.png")
+    
+    fig.show()
+    fig.waitforbuttonpress()
     
 
 def show_matrix_values(w_matrix: Tensor, graph_name: str=None):
@@ -206,6 +239,34 @@ def show_matrix_values(w_matrix: Tensor, graph_name: str=None):
 
     if graph_name:
         fig.savefig(f"{graph_name}.png")
+
+
+def preprocess_images(images, device: str="cpu") -> list[Tensor]:
+    """Returns the size of a tensor.
+
+    Args:
+        input: A `Tensor` or `SparseTensor`.
+        name: A name for the operation (optional).
+        optimize: if true, encode the size as a constant when possible.
+        out_type: (Optional) The specified non-quantized numeric output type of the
+        operation. Defaults to `tf.int32`.
+
+    Returns:
+        A `Tensor` of type `out_type`. Defaults to `tf.int32`.
+    """
+    '''
+    ### Parameters
+    1. images: ArrayLike
+    2. device: str
+        "cpu" or "cuda"
+    ### Returns
+    list of tensors
+    :return: a list of Tensor containing flattened and normalized images.
+    '''
+    output = []
+    for image in images:
+        output.append(Tensor(image.flatten()/255, device=device))
+    return output
 
 
 def training_loop(model, train_data, loss, lr) -> None:

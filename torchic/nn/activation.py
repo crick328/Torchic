@@ -7,7 +7,14 @@ import numpy as np
 import cupy as cp
 
 
-class Sigmoid:
+# perche' mi serve capire se una classe e' cosa.
+# In questo modo, se faccio isistance(layer, ActivationFunction)
+# le spotto a prescindere dal nome
+class ActivationFunction:
+    pass
+
+
+class Sigmoid(ActivationFunction):
     # ho bisogno che sia una classe per usare __repr__
     '''
     Input: 1 dimensional Tensor
@@ -32,7 +39,7 @@ class Sigmoid:
         return "Sigmoid()"
 
 
-class ReLU:
+class ReLU(ActivationFunction):
     def __call__(self, x: Tensor) -> Tensor:
         output = Tensor(x._device.maximum(0, x.data))
 
@@ -52,7 +59,7 @@ class ReLU:
         return "ReLU()"
 
 
-class Softmax:
+class Softmax(ActivationFunction):
     __slots__ = ("dim")
 
     # Può essere calcolata solo su una dimensione
@@ -89,7 +96,7 @@ class Softmax:
         return f"Softmax(dim={self.dim})"
     
 
-class LogSoftmax:
+class LogSoftmax(ActivationFunction):
     __slots__ = ("dim")
 
     # Può essere calcolata solo su una dimensione

@@ -1,25 +1,32 @@
 # ha ragione il bro di stackoverlow: non sta alla classe Tensor il cambio dei device
 # di tutte le istanze, ma a chi li contiene (layer e modelli!)
 import torchic
-from torchic import nn
 import timeit
 import cupy as cp
 import numpy as np
 import torch
 import time
 
+from torchic import Tensor
+from torchic import nn
+from torchic.beta_tools import draw_graph
 
-a = torchic.Tensor([1,2], requires_grad=True)
-b = torchic.Tensor([4,1], requires_grad=True)
-d = torchic.Tensor([0,7], requires_grad=True)
 
-c = a + b
-e = c + d
 
-c.requires_grad = False
-e.mean().backward()
+model = nn.Sequential(
+    nn.Linear(2, 500),
+    nn.ReLU(),
+    nn.Linear(500, 250),
+    nn.ReLU(),
+    nn.Linear(250, 100),
+    nn.ReLU(),
+    nn.Linear(100, 10),
+    nn.Softmax(0)
+)
 
-print(a.grad)
+res = model(Tensor([1,2]))
+res.mean().backward()
+draw_graph(model)
 
 
 

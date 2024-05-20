@@ -4,7 +4,8 @@ from numpy import dtype, float32
 
 DEFAULT = {
     "device": "cpu",
-    "dtype": float32
+    "dtype": float32,
+    "img_dir": "images"
 }
 
 
@@ -22,4 +23,11 @@ def get_default_dtype() -> dtype:
     return DEFAULT["dtype"]
 
 def set_defalt_dtype(type: dtype) -> None:
-    device = DEFAULT["dtype"] = type
+    DEFAULT["dtype"] = type
+
+
+def get_default_img_dir() -> dtype:
+    return DEFAULT["img_dir"]
+
+def set_defalt_img_dir(dir: str) -> None:
+    DEFAULT["img_dir"] = dir

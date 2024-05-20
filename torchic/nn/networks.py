@@ -7,32 +7,6 @@ import cupy as cp
 # entrambi bisogno di un metodo che cambi device e che permetta di salvare su
 # file. Quando ne avrai bisongo, implementalo.
 # Esempio:
-class Module:
-    def __init__(self):
-        pass
-
-    def state_dict(self):
-        sd = dict()
-        sd[self.__class__.__name__]={}
-
-        for identifier, value in self.__dict__.items():
-            # ammesso che value non sia di nuovo un Module...
-            # Senno' devo nestare
-            sd[self.__class__.__name__][identifier] = value
-        pass
-
-    def load_state_dict(self):
-        pass
-
-    def to(self, device: str):
-        pass
-
-    # modes
-    def train(self):
-        pass
-
-    def eval(self):
-        pass
     
 
 # Linear Layer (corrisponde al Dense layer di Tensorflow se quest'ultimo è settato con activation=None)
@@ -236,7 +210,6 @@ class Sequential:
     
     def set_layer_attr(self, layer_name, attr_name, attr_value):
         setattr(self.__dict__[layer_name], attr_name, attr_value)
-        
     
     def __repr__(self):
         output = "Sequential("

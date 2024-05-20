@@ -48,34 +48,43 @@ from torchic.settings import DEFAULT
 # metodo comodo per quando voglio creare uno stesso Tensor con gli stessi
 # attributi (mi viene in ment il case self.__class di data manager)
 
+# https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html
+
 class Tensor:
+    '''
+    Classe Tensor.
+
+    Attributes:
+        data: `ndarray` che funge da scalare, vettore, matrice o elementi a più dimensioni.
+        _requires_grad: Può essere modificato solo se il tensore è leaf (`is_leaf = True`).
+            Se si assegna una `grad_fn`, viene automaticamente settato a `True`.
+        _device: contiene il modulo `np` o `cp`. Se si legge il suo valore, grazie al
+            getter si riceve `"cpu"` per `np` e `"cuda"` per `cp`.
+        _is_leaf: flag to mark if a tensor is child or created directly by the user.
+            True per convenzione se `requires_grad = False`: Altrimenti,
+            è `True` se il tensor non è frutto di operazioni.
+            Automaticamente impostato a `False` se viene assegnata una `grad_fn`. 
+        _grad_fn: contiene la derivata parziale della funzione in cui è stato coinvolto
+            il tensor. La funzione prende in input il cr_grad, ovvero un Tensor con il
+            prodotto delle derivate parziali dei layer precedenti.
+            La variabile è `None` se il tensor è leaf. Viene automaticamente reimpostata
+            a None dopo ogni passaggio.
+        grad: contiene il gradient della loss w.r.t self. Calcolato tramite
+            la grad_fn se requires_grad è `True`.
+            Viene automaticamente reimpostata a None se il tensor non è leaf.
+    '''
     __slots__ = ("data", "_requires_grad", "_device", "_is_leaf", "_grad_fn", "grad")
 
     def __init__(self, data, requires_grad: bool=False, device: str=None):
         '''
-        data: array-like.
-        requires_grad: optional bool to request the update of the gradient.
-            Default is False.
-        device: optional str which can be either 'cpu' or 'cuda'.
-            Default is None (automatic choice).
-        dtype: specify the desired data type. Default is float32. If set to None,
-            the libraries will automatically choose float64
-        '''
-        '''
-        self.data: ndarray che funge da scalare, vettore, matrice o elementi a più dimensioni.
-        self.requires_grad: Può essere modificato solo se il tensore è leaf.
-            Se si assegna una grad_fn, viene automaticamente settato a True.
-        self.device: contiene il modulo np o cp. Se si legge il suo valore, grazie al
-            getter si riceve "cpu" per np e "cuda" per cp.
-        self.is_leaf: True per convenzione se requires_grad è False: Altrimenti,
-            è True se il tensor non è frutto di operazioni.
-            Automaticamente impostato a False se viene assegnata una grad_fn. 
-        self.grad_fn: contiene la derivata parziale della funzione in cui è stato coinvolto il tensor. La funzione
-            prende in input il cr_grad, ovvero un Tensor con il prodotto delle derivate parziali dei layer precedenti.
-            La variabile è None se il tensor è leaf. Viene automaticamente reimpostata a None dopo ogni passaggio.
-        self.grad: contiene il gradient della loss w.r.t self. Calcolato tramite
-            la grad_fn se requires_grad è True.
-            Viene automaticamente reimpostata a None se il tensor non è leaf.
+        Returns a `Tensor` on `device` with dtype `torch.settings.DEFAULT["dtype"]`.
+
+        Args:
+            data (ArrayLike): Tenno, skuuu!.
+            requires_grad (bool, optional): flag request the update of the gradient.
+                Default is False.
+            device (str, optional): can be either `"cpu"` or `"cuda"`.
+                Default is `torch.settings.DEFAULT["device"]`.
         '''
         self.data, self._device = self.__data_manager(data, device)
         self._requires_grad = requires_grad
@@ -137,10 +146,20 @@ class Tensor:
 
     @property
     def requires_grad(self) -> bool:
+        """The setter doesn't allow to change `requires_grad` if `is_leaf=False`,
+        which means that this Tensor is part of the backpropagation.
+        """
         return self._requires_grad
     
     @property
     def device(self) -> str:
+        """Under the hood, `_device` contains the module to operate on the
+        requested device (so `_device=np|cp`). This property just returns
+        the corrispondent device name as string (`cp`->`"cuda"`, `np`->`"cpu"`).
+        
+        The setter methods doesn't accept any value, making this attribute not
+        writable. If the user wants to change it, they can use the `.to()` method.
+        """
         if self._device is cp:
             return "cuda"
         else:
@@ -148,10 +167,14 @@ class Tensor:
     
     @property
     def is_leaf(self) -> bool:
+        """The setter doesn't accept any value, making this attribute not writable."""
         return self._is_leaf
     
     @property
     def grad_fn(self) -> Callable:
+        """The setter method doesn't accept `None` as value. Setting a `grad_fn`
+        will also set `is_leaf=False` and `requires_grad=True`.
+        """
         return self._grad_fn
     
     # definisco i setter
@@ -179,11 +202,17 @@ class Tensor:
     @grad_fn.setter
     def grad_fn(self, value: bool) -> None:
         if value is not None:
-            # aggiornato a False perché si assegna una grad_fn
-            self._is_leaf = False
-            # da qua in avanti, requires_grad non sarà più modificabile perché
-            # non è più considerato leaf tensor
-            self._requires_grad = True
+            if self._grad_fn is None:
+                # aggiornato a False perché si assegna una grad_fn
+                self._is_leaf = False
+                # da qua in avanti, requires_grad non sarà più modificabile perché
+                # non è più considerato leaf tensor
+                self._requires_grad = True
+            else:
+                raise RuntimeError(
+                    "Mi stai chiedendo di sovrascrivere una grad function non nulla "
+                    "con un valore non nullo, ma questo romperebbe la backpropagation."
+                    )
         self._grad_fn = value
     
     # ===== BASE FUNCTION =====
@@ -340,8 +369,10 @@ class Tensor:
             
             # se i tensor hanno parent, continuo la backprop
             if not self.is_leaf:
-                # NOTE FONDAMENTALE: self.grad e' diverso da self_grad! 
+                # NOTE FONDAMENTALE: self.grad e' diverso da self_grad!
                 self.grad_fn(self_grad)
+                # DA QUI IN POI il codice viene runnato DOPO la fine di tutte
+                # le call partite da grad_fn()
                 # elimino il grad perché è un leaf tensor e non mi serve
                 self.grad = None
                 self.grad_fn = None
@@ -404,17 +435,19 @@ class Tensor:
             output.grad_fn = _matmul_backward
         return output
     
-    # NOTE: MANCA LA FUNZIONE BACKWARD
-    def sum(self) -> Self:
+    def sum(self, axis=None) -> Self:
         """
         return: sum of data as scalar Tensor object
         """
-        output = Tensor(self._device.sum(self.data))
-        output.grad_fn = self.grad_fn
-        warnings.warn(
-            "Hai chiamato .sum(), ma NON ha una funzione backward!"
-            "Se stai testando la derivata di una nuova funzione, usa .mean() o implementala."
+        output = Tensor(self._device.sum(self.data, axis=axis))
+
+        def _sum_backward(cr_grad: np.ndarray|cp.ndarray):
+            self._backward(
+                self_grad=self._device.ones(self.data.shape) * cr_grad
             )
+
+        if self.requires_grad:
+            output.grad_fn = _sum_backward
         return output
     
     # NOTE: supporta solo 1d array
@@ -478,6 +511,9 @@ class Tensor:
             output.grad_fn=_sub_backward
         return output
     
+    # NOTE: QUESTE FUNZIONI SPACCANO TUTTO PERCHE' NON SUPPORTANO
+    # LA BACKWARD E IL PASSAGGIO DEI GRAD!!!!
+    
     def __rsub__(self, other) -> Self:
         return Tensor(other.data - self.data) if type(other) == Tensor else Tensor(other - self.data)
     
@@ -494,7 +530,18 @@ class Tensor:
         return Tensor(other.data / self.data) if type(other) == Tensor else Tensor(other / self.data)
     
     def __neg__(self) -> Self:
-        return Tensor(self._device.negative(self.data))
+        # output = array * -1
+        output = Tensor(-self.data)
+
+        def _neg_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
+            self._backward(
+                # d/dSelf(data * -1) = d/dSelf(data) * -1 = ones(len(data)) * -1
+                self_grad= -self._device.ones(self.data.shape) * cr_grad
+            )
+
+        if self.requires_grad:
+            output.grad_fn = _neg_backward
+        return output
     
     def __pow__(self, number) -> Self:
         output = Tensor(self._device.power(self.data, number))

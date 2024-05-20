@@ -24,6 +24,8 @@ Test e cose da implementare per lavorare sul nuovo modello di assistente
     (https://github.com/hkproj/pytorch-llama/blob/main/Slides.pdf)
     Come posso evitare la computazione di embeddings vuoti quando i token in input sono molto inferiori alla max context len?
     Architetture con solo encoder o decoder (tipo i LLama): perche'? Come fanno a funzionare? Qaul e' l'intuizione?
+    Come si crea un multimodal latent space (sorta di embeddings che racchiude testo, serie di immagini e audio)?
+    Come fa GPT-4o a produrre suoni, speech, immagini e testo? Come fa a scegliere cosa usare (dall-e e sora)?
 - Implementazione activation functions più moderne:
     (c'è n'è una che è particolarmente popolare nei nuovi LLM);
     GeLU;
@@ -38,9 +40,19 @@ Test e cose da implementare per lavorare sul nuovo modello di assistente
     Cos'e' l'augmented retrivial (o Retrivial augmented generation)?
     Come entrano in gioco e cosa fanno i "software wrapper" come Guard 2 o Code Shield (entrambi di Meta)?
     Come si usa la cosine similarity?
+    Cosa sono i bfloat16?
+    Come fanno certi modelli ad andare in inference con gli int8 (Autopilot incluso)? Sembra che la maggior parte dei nuovi chip sia specializzata su int8 e floatb16
+    Cos'e' la densification?
+    A quanto pare il training dei LLM viene fatto con x istanze che vengono trainate su n gpu (probabilmente su parti diverse del dataset).
+        Ma come funziona? E' simile al RL dove si sceglie un modello che ha la loss minore,
+        si uniscono i weights a fine training o si aggiungono i gradient prima del pass
+        dell'optimizer e si aggiornano con quelli?
 - Dataset:
     Quanto impatta la qualita' dei dati?
     La quantita' puo' ovviare una qualita' piu' bassa e viceversa?
     E' vero che si puo' fare 95% in una lingua e il resto in decine e decine di lingue diverse perche' il modello riesce a trasferire la comprensione?
     Con quali criteri si filtrano i dati buoni?
     Come si processano in modo efficiente tonellate di dati?
+- New architectures:
+    KAN
+    Large Action Models 

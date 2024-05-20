@@ -9,20 +9,14 @@ sono anche molto curioso di sapere come funzionano (anche grazie a Minecraft).
 OCCHIO che devi usare lo stesso algoritmo di PyTorch se vuoi che i tuoi seed
 diano gli stessi numeri suoi!
 
-Implementa qualcosa per visualizzare le distribuzioni dei valori nelle matrix
-
 Cerca di creare un modo per visualizzare l'architettura della rete
 (partendo dalle più semplici)
 
 Voglio implementare un modo semplice (e corretto) per quantizzare i modelli
 
-Manca tutta la visualizzazione delle stats di training, un file che contiene un
-resoconto a fine training e l'ETA
-+ stima memoria occupata (pensavo di fare sizeof(vettore 2x1 - vettore 1x1) per
+Stima memoria occupata (pensavo di fare sizeof(vettore 2x1 - vettore 1x1) per
 sapere quanto occupa una cella (risultato) e quanto la base dell'oggetto (q.tà sottratta - n celle))
 
-Funzione helper pprint con l'andamento del trainig e l'ETA. Magari rendi il print un thread
-in modo da non avere rallentamenti (https://pypi.org/project/eta/)
 
 (!) Inizia a processare i dati di wikipedia!
 
@@ -34,3 +28,5 @@ pypiwin32==223
 pywin32==306
 snakeviz==2.2.0
 typing_extensions==4.9.0
+graphviz-0.20.3
+https://forum.graphviz.org/t/new-simplified-installation-procedure-on-windows/224
