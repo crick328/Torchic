@@ -2,7 +2,7 @@
 # ai quali mi riferisco, quindi le chiavi del dict DEFAULT devono coincidere con
 # i nomi usati negli args dell'init di Tensor
 
-from torchic import Tensor
+from torchic.cuda_tensor import Tensor
 from torchic.settings import DEFAULT
 import numpy as np # gli init possono sempre creare su cpu, tanto bisogna fare model.to(device)
 import warnings

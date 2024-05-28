@@ -45,4 +45,7 @@ torchic 1.x: refactoring della libreria e adattamento alla nomenclatura di PyTor
             confusion matrix, distribuzione e connessioni dei neuroni di output. Sviluppo funzione contenente supervised training loop
             in modo da non doverlo scrivere ogni volta con aggiunta di metriche e plot delle stesse. Aggiustato un bug nel setter di grad_fn
             che permetteva di sovrascrivere la grad_fn quando non poteva esserlo. Implementazione di Categorical Cross Entropy Loss e Negative
-            Log Likehood Loss.
+            Log Likehood Loss. Scoperta molta ciccia sul funzionamento dell'autograd originale, implementazione visualizzazione dei grafi di
+            forward e backward, tentata ristrutturazione del processo di backpropagation. Creazione branch torchic.datasets con DataLoader,
+            mnist e data preprocessing. Ristrutturazione codice di layers e Sequential con aggiunta di ereditarieta'. Implementato il supporto
+            di .mean() su piu' dimensioni con relativa backward e riscrittura della derivata, fix bug di print di Tensor,

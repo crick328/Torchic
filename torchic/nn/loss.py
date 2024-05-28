@@ -59,7 +59,7 @@ class NegativeLogLikehoodLoss:
         loss = -Tensor(x_pred.data * y_trg._device.log(y_trg.data + eps)).sum()#.mean()
 
         def _NLLLoss_backward(cr_grad):
-            x_pred._backward(
+            x_pred._run_backward(
                 # d/dx(y*log(x + eps)) = y * d/dx(log(x + eps)) = y * 1/(x + eps)
                 self_grad=-y_trg.data/(x_pred.data + eps) * cr_grad
             )
@@ -98,7 +98,7 @@ class CrossEntropyLoss:
         def _CELoss_backward(cr_grad):
             #pred_p.grad_fn(-target_p.data/(soft_p.data + eps) * cr_grad)
             #pred_p.grad_fn = None
-            x._backward(
+            x._run_backward(
                 # self_grad= -target_p.data/(soft_p.data + eps) * cr_grad
                 self_grad=(self.softmax(x)-target).data * cr_grad
             )

@@ -48,6 +48,14 @@ from torchic.settings import DEFAULT
 # metodo comodo per quando voglio creare uno stesso Tensor con gli stessi
 # attributi (mi viene in ment il case self.__class di data manager)
 
+# NOTE: si puo' gestire il dtype del child tensor sempre in modo sicuro tramite
+# le mie funzioni, ma dinamicamente. Il dtype puo' essere passato come parametro
+# quando si crea un tensor (default=None => settings). Ogni operazione della
+# classe tensor deve chiamare una funzione (che puo' essere un class method)
+# che prende in input il dtype dei parent e da' in output il dtype da castare.
+# Si puo' anche chiamare nel metodo ._backward perche' tanto lavora direttamente
+# sui .data
+
 # https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html
 
 class Tensor:
@@ -217,12 +225,30 @@ class Tensor:
     
     # ===== BASE FUNCTION =====
 
+    def expand(self, *shape) -> Self:
+        '''
+        Returns self with values copied in the new dim.
+
+        Example:
+        [1,2,3] -> broadcast_to([2,3]) -> [[1,2,3],[1,2,3]]
+        '''
+        output = Tensor(self._device.broadcast_to(shape))
+        # non so che pesci prendere per la backward
+        raise RuntimeError("Hai chiamato una funzione in beta.")
+
     def unsqueeze(self, dim: int) -> Self:
-        # NOTE: np ha squeeze, pero' "unsqueeze" e' expand_dim (se non ho capito male)
+        '''
+        Insert a new dimension in the given dim.
+
+        Example:
+        [1,2] -> unsqueeze(0) -> [[1,2]] (new shape is 1x2)
+        [1,2] -> unsqueeze(1) -> [[1],[2]] (new shape is 2x1)
+        '''
+        # NOTE: np ha squeeze, pero' "unsqueeze" e' expand_dim
         output = Tensor(self._device.expand_dims(self.data, axis=dim))
 
         def _unsqueeze_backward(cr_grad: np.ndarray|cp.ndarray):
-            self._backward(
+            self._run_backward(
                 # converto cr_grad da
                 # output.shape a self.data.shape
                 self_grad=cr_grad.squeeze(dim)
@@ -233,10 +259,15 @@ class Tensor:
         return output
 
     def view(self, *shape) -> Self:
+        '''
+        Returns self with data rearranged to match the given shape.
+        The desired shape has to have the same size (n of total elem)
+        of self.
+        '''
         output = Tensor(self.data.reshape(shape))
 
         def _view_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            self._backward(
+            self._run_backward(
                 # converto cr_grad da
                 # output.shape a self.data.shape
                 self_grad=cr_grad.reshape(self.data.shape)
@@ -251,7 +282,7 @@ class Tensor:
 
         def _transpose_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
             # rifaccio la trasposta al contrario
-            self._backward(
+            self._run_backward(
                 self_grad=cr_grad.transpose(dim2, dim1)
             )
         
@@ -294,9 +325,12 @@ class Tensor:
         '''n° of dim (scalar 0, vector 1, matrix 2, ecc.)'''
         return self.data.ndim
     
-    def size(self) -> int:
+    def size(self, dim: int=None) -> int:
         # numero di ingressi
-        return self.data.size
+        if not dim:
+            return self.data.size
+        else:
+            self._device.size(self.data, axis=dim)
     
     def backward(self, gradient: Self=None) -> None:
         '''
@@ -351,7 +385,7 @@ class Tensor:
                 )
     
     # lascialo cosi' il requires_grad, e' corretto, chiaro e tutto si appggia su di esso
-    def _backward(self, self_grad: np.ndarray|cp.ndarray, other: Self=None, other_grad: np.ndarray|cp.ndarray=None) -> None:
+    def _run_backward(self, self_grad: np.ndarray|cp.ndarray, other: Self=None, other_grad: np.ndarray|cp.ndarray=None) -> None:
         # se requires_grad e' False, sicuramente is_leaf e' True
         #print(self_grad.dtype)
 
@@ -392,6 +426,7 @@ class Tensor:
                 other.grad_fn(other_grad)
                 other.grad = None
                 other.grad_fn = None
+
     
     # ===== EXPLICIT OPERATIONS =====
 
@@ -405,24 +440,19 @@ class Tensor:
 
             # x @ A
             if self.data.ndim == 1 and other.data.ndim == 2:
-                self._backward(
-                    # d/dx = A.T;   dL/dx = crt @ A.T
-                    self_grad=cr_grad @ other.data.T,
-                    other=other,
-                    # d/dA = x.T;   dL/dA = x.T ⊗ crt
-                    other_grad=other._device.outer(self.data.T, cr_grad)
-                )
+                # d/dx = A.T;   dL/dx = crt @ A.T
+                self_grad=cr_grad @ other.data.T
+                # d/dA = x.T;   dL/dA = x.T ⊗ crt
+                other_grad=other._device.outer(self.data.T, cr_grad)
+
             # A @ B
             elif self.data.ndim == other.data.ndim == 2:
-                self._backward(
-                    # d/dA = (A @ B)' = (A)' @ B = B.T
-                    # dL/dA = crt @ B.T
-                    self_grad=cr_grad @ other.data.T,
-                    other=other,
-                    # d/dB  = (A @ B)' = A @ (B)' = A.T
-                    # dL/dB  = A.T @ crt
-                    other_grad=self.data.T @ cr_grad
-                )
+                # d/dA = (A @ B)' = (A)' @ B = B.T
+                # dL/dA = crt @ B.T
+                self_grad=cr_grad @ other.data.T
+                # d/dB  = (A @ B)' = A @ (B)' = A.T
+                # dL/dB  = A.T @ crt
+                other_grad=self.data.T @ cr_grad
             else:
                 raise NotImplementedError(
                     'Per ora hai definito la matmul backward nel caso vettore @ matrice '
@@ -430,19 +460,30 @@ class Tensor:
                     'non rientra in questa casistica. '
                     f'dim self={self.data.ndim}, dim other={other.data.ndim}'
                 )
+            
+            self._run_backward(
+                    self_grad=self_grad,
+                    other=other,
+                    other_grad=other_grad
+                )
 
         if self.requires_grad or other.requires_grad:
             output.grad_fn = _matmul_backward
         return output
     
-    def sum(self, axis=None) -> Self:
+    # NOTE: la backward NON supporta piu' axis!
+    def sum(self, dim=None) -> Self:
+        assert dim==None, ValueError(
+            "mi hai chiesto di fare una sum su una dimensione, ma "
+            "la mia backpropo NON supporta queta funzione."
+            )
         """
         return: sum of data as scalar Tensor object
         """
-        output = Tensor(self._device.sum(self.data, axis=axis))
+        output = Tensor(self._device.sum(self.data, axis=dim))
 
         def _sum_backward(cr_grad: np.ndarray|cp.ndarray):
-            self._backward(
+            self._run_backward(
                 self_grad=self._device.ones(self.data.shape) * cr_grad
             )
 
@@ -450,23 +491,117 @@ class Tensor:
             output.grad_fn = _sum_backward
         return output
     
-    # NOTE: supporta solo 1d array
-    def mean(self) -> Self:
+    def mean(self, dim: int=None, keepdim: bool=False) -> Self:
         """
-        return: mean of data as scalar Tensor object
+        Returns the mean of all dims as scalar Tensor object if dim is None,
+        else only of the selected dim.
+
+        Args:
+            dim (int): 
         """
-        output = Tensor(self._device.mean(self.data))
+        output = Tensor(self._device.mean(self.data, axis=dim, keepdims=keepdim))
 
         def _mean_backward(cr_grad: np.ndarray|cp.ndarray):
-            #print((1/self.data.size * self._device.ones(self.data.shape)).dtype)
-            self._backward(
-                self_grad=1/self.data.size * self._device.ones(self.data.shape) * cr_grad
+            # NOTE: la funzione x.expand_as(y) di PyTorch equivale a
+            # np.broadcast_to(np.expand_dims(x, dim), y.data.shape) perche'
+            # prima devo aggiungere la dimensione e poi devo far si' che i
+            # suoi valori siano uguali a quelle delle altre dims.
+            # Se x ha gia' lo stesso numero di dims, si omette .epxand_dims().
+            # Con la mia classe Tensor, l'equivalente di x.expand_as(y) sarebbe
+            # x.unsqueeze(dim).expand(y.shape())
+            if dim is not None:
+                cr_grad = self._device.expand_dims(cr_grad, dim)
+            cr_grad = self._device.broadcast_to(cr_grad, self.data.shape)
+
+            self._run_backward(
+                # d/dx( (x + y + ... + z) / N) = 1/N * [d/dx(x) + d/dx(y) + ... + d/dx(z)]
+                # sto derivando w.r.t. x => le altre le tratto come costanti
+                # = 1/N * [1 + 0 + ... + 0] = 1/N
+                # dL/dx = grad * 1/N (dove N = size(self) = n ingressi. totali di self o dim)
+                self_grad= cr_grad / self._device.size(self.data, dim)
             )
 
         # in questi casi c'e' un po' di ridondanza
         if self.requires_grad:
             output.grad_fn = _mean_backward
         return output
+    
+    def var(self, dim: int=None, keepdim=False, unbiased=True):
+        x = self.data - self.data.mean(axis=dim, keepdims=True)
+        n = self._device.size(self.data, dim)
+
+        if unbiased:
+            n -= 1
+
+        var = self._device.power(x, 2).sum(axis=dim, keepdims=True) / n
+        
+        if not keepdim:
+            output = Tensor(var.squeeze())
+        else:
+            output = Tensor(var)
+
+        def _var_backward(cr_grad: np.ndarray|cp.ndarray):
+            if dim is not None:
+                cr_grad = self._device.expand_dims(cr_grad, dim)
+            cr_grad = self._device.broadcast_to(cr_grad, self.data.shape)
+
+            self._run_backward(
+                # d/dx( (x-x.mean)^2 / (N) )
+                # = 2(x-x.mean) / N
+                self_grad= 2*x/n * cr_grad
+            )
+        
+        if self.requires_grad:
+            output.grad_fn = _var_backward
+        return output
+
+    
+    def std(self, dim: int=None, keepdim=False, unbiased=True):
+        '''
+        Returns standard deviation calculated with Bessel's correction
+        (which is the -1 at denominator) if unbiased=True.
+
+        std = sqrt((x-x.mean)^2 / (N-1))
+        std = sqrt(var(x))
+        '''
+        #x = self.data - self.data.mean(axis=dim, keepdims=keepdim)
+        x = self.data - self.data.mean(axis=dim, keepdims=True)
+        n = self._device.size(self.data, dim)
+
+        if unbiased:
+            n -= 1
+
+        std = self._device.sqrt( self._device.power(x, 2).sum(axis=dim, keepdims=True) / n )
+        
+        if not keepdim:
+            output = Tensor(std.squeeze())
+        else:
+            output = Tensor(std)
+
+        def _std_backward(cr_grad: np.ndarray|cp.ndarray):
+            if dim is not None:
+                cr_grad = self._device.expand_dims(cr_grad, dim)
+            cr_grad = self._device.broadcast_to(cr_grad, self.data.shape)
+            denominator = n*std
+
+            self._run_backward(
+                # d/dx( sqrt((x-x.mean)^2 / (N)) )
+                # h(x) = (x-x.mean)^2 / (N); f(y) = sqrt(h(x))
+                # chain rule => d/dx = df/dh * dh/dx
+                # => 1/( 2*sqrt(h(x)) ) * 2(x-x.mean)/N
+                # = 1/( N*sqrt(h(x)) ) * (x-x.mean)  =  (x-x.mean) / ( N*sqrt(h(x)) );
+                # sqrt(h(x)) e' la formula della std, =>
+                # (x - x.mean) / (N * std)
+
+                # evito una possibile division by zero esplicando che voglio la divisione
+                # solo dove i valori sono != 0
+                self_grad= self._device.divide(x, denominator, where= denominator!=0) * cr_grad
+            )
+        
+        if self.requires_grad:
+            output.grad_fn = _std_backward
+        return output
+        
     
     # ===== IMPLICIT CLASS FUNCTIONS ===== 
     
@@ -480,7 +615,8 @@ class Tensor:
             # le somme che necessitano di backprop avvengono solo tra tensori,
             # quindi non la definisco per __radd__
 
-            self._backward(
+            self._run_backward(
+                # forse ha piu' senso fare cr_grad.reshape()
                 # derivata parziale w.r.t self, cioè x. d/dx(x+a)=1 ==> d/dx(x+y)=1+0, cioè self con i valori a 1.
                 self_grad=self._device.ones(self.data.shape) * cr_grad,
                 other=other,
@@ -492,14 +628,14 @@ class Tensor:
             output.grad_fn = _add_backward
         return output
     
-    def __radd__(self, other) -> Self:
-        return Tensor(other.data + self.data) if type(other) == Tensor else Tensor(other + self.data) if other is not None else self
+    #def __radd__(self, other) -> Self:
+        #return Tensor(other.data + self.data) if type(other) == Tensor else Tensor(other + self.data) if other is not None else self
 
     def __sub__(self, other: Self) -> Self:
         output = Tensor(self.data - other.data)
 
         def _sub_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            self._backward(
+            self._run_backward(
                 # derivata parziale w.r.t self, cioè x. d/dx(x-a)=1 ==> d/dx(x-y)=1-0, cioè self con i valori a 1.
                 self_grad=self._device.ones(self.data.shape) * cr_grad,
                 other=other,
@@ -511,30 +647,62 @@ class Tensor:
             output.grad_fn=_sub_backward
         return output
     
+    def __mul__(self, other: Self) -> Self:
+        output = Tensor(self.data * other.data)
+
+        def _mul_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
+            self._run_backward(
+                # d/dx( x*y ) => d/dx(x)*y = 1*y = y
+                self_grad= other.data * cr_grad,
+                other=other,
+                # d/dy( x*y ) => d/dx(y)*x = 1*x = x
+                other_grad= self.data * cr_grad
+            )
+
+        if self.requires_grad or other.requires_grad:
+            output.grad_fn = _mul_backward
+        return output
+    
+    def __truediv__(self, other: Self) -> Self:
+        output = Tensor(self.data / other.data)
+
+        def _div_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
+            self._run_backward(
+                # d/dx( x/y ) = d/dx(x) * 1/y = 1 * 1/y = 1/y
+                # usando la funzione evito errori div by zero
+                self_grad= other._device.reciprocal(other.data)  *cr_grad,
+                other=other,
+                # d/dy( x/y ) = d/dy(1/y)*x = -1/y^2 * x =
+                # x/y^2
+                # per il momento non gestisco div by zero
+                other_grad= self.data / other._device.power(other.data, 2) * cr_grad
+            )
+
+        if self.requires_grad or other.requires_grad:
+            output.grad_fn = _div_backward
+        return output
+
     # NOTE: QUESTE FUNZIONI SPACCANO TUTTO PERCHE' NON SUPPORTANO
     # LA BACKWARD E IL PASSAGGIO DEI GRAD!!!!
     
-    def __rsub__(self, other) -> Self:
-        return Tensor(other.data - self.data) if type(other) == Tensor else Tensor(other - self.data)
-    
-    def __mul__(self, other) -> Self:
-        return Tensor(self.data * other.data) if type(other) == Tensor else Tensor(self.data * other)
+    # ma se deprecassi tutte queste funzioni inverse? Tanto non sono chiamate
+    # mai perche' io chiedo sempre che i tensori operino tra tensori e nella
+    # logica interna non chiamo le funzioni del tensor...
+    #def __rsub__(self, other) -> Self:
+        #return Tensor(other.data - self.data) if type(other) == Tensor else Tensor(other - self.data)
 
-    def __rmul__(self, other) -> Self:
-        return Tensor(other.data * self.data) if type(other) == Tensor else Tensor(other * self.data)
+    #def __rmul__(self, other) -> Self:
+        #return Tensor(other.data * self.data) if type(other) == Tensor else Tensor(other * self.data)
     
-    def __truediv__(self, other) -> Self:
-        return Tensor(self.data / other.data) if type(other) == Tensor else Tensor(self.data / other)
-    
-    def __rtruediv__(self, other) -> Self:
-        return Tensor(other.data / self.data) if type(other) == Tensor else Tensor(other / self.data)
+    #def __rtruediv__(self, other) -> Self:
+        #return Tensor(other.data / self.data) if type(other) == Tensor else Tensor(other / self.data)
     
     def __neg__(self) -> Self:
         # output = array * -1
         output = Tensor(-self.data)
 
         def _neg_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            self._backward(
+            self._run_backward(
                 # d/dSelf(data * -1) = d/dSelf(data) * -1 = ones(len(data)) * -1
                 self_grad= -self._device.ones(self.data.shape) * cr_grad
             )
@@ -547,7 +715,7 @@ class Tensor:
         output = Tensor(self._device.power(self.data, number))
 
         def _pow_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            self._backward(
+            self._run_backward(
                 self_grad=number * self._device.power(self.data, number-1) * cr_grad
             )
 
@@ -559,12 +727,26 @@ class Tensor:
     
     # ===== CLASS UTILITY =====
 
+    def __hash__(self) -> int:
+        return hash(self.data) + hash(self._device) \
+                + hash(self._requires_grad) + hash(self._is_leaf) \
+                + hash(self._grad_fn) + hash(self.grad)
+
     def __eq__(self, other):
         # per confronti del tipo Tensor1 == Tensor2
         if isinstance(other, Tensor):
             return self._device.allclose(self.data, other.data)
         # posso farlo per np e cp, ma non so se lo usero' mai e per ora evito
-        return NotImplementedError(f"Comparison with class {other.__class__} not yet supported :(")
+        return NotImplementedError(
+            f"Comparison with class {other.__class__} not yet supported :("
+            )
+
+    #def __neq__(self, other):
+        # per confronti del tipo Tensor1 == Tensor2
+        #if isinstance(other, Tensor):
+            #return not self._device.allclose(self.data, other.data)
+        # posso farlo per np e cp, ma non so se lo usero' mai e per ora evito
+        #return NotImplementedError(f"Comparison with class {other.__class__} not yet supported :(")
 
     def __len__(self) -> int:
         return len(self.data)
@@ -576,10 +758,10 @@ class Tensor:
         # funzione chiamata quando stampo il Tensor
         print_str = self._device.array2string(self.data, threshold=self._device.inf, max_line_width=self._device.inf, separator=',', precision=4).replace('\n', '')
         
-        if self.requires_grad:
-            print_str.join(f", requires_grad={self.requires_grad}")
         if self.grad_fn is not None:
-            print_str.join(f", grad_fn={self.grad_fn}")
+            print_str = print_str + f", grad_fn={self.grad_fn.__name__}"
+        elif self.requires_grad:
+            print_str = print_str + f", requires_grad={self.requires_grad}"
 
         return f"Tensor({print_str})"
     

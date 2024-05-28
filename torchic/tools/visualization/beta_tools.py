@@ -1,7 +1,6 @@
-from torchic.nn import Linear
+from torchic.nn.layers import Linear
 from torchic.nn.activation import ActivationFunction
 from graphviz import Digraph
-import numpy as np
 
 
 # ogni nodo e' un tensore. Se op e' settata, e' un tensore leaf.

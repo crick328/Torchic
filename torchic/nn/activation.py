@@ -24,7 +24,7 @@ class Sigmoid(ActivationFunction):
         sigmoid = Tensor(1/(1 + x._device.exp(-x)))
 
         def _sigmoid_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            x._backward(
+            x._run_backward(
                 # d/dσ = σ(x) * (1 - σ(x)); dL/dσ = d/dσ * prodotto derivate parziali delle operazioni precedenti
                 self_grad=sigmoid.data * (1 - sigmoid.data) * cr_grad
             )
@@ -44,7 +44,7 @@ class ReLU(ActivationFunction):
         output = Tensor(x._device.maximum(0, x.data))
 
         def _ReLU_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            x._backward(
+            x._run_backward(
                 #self_grad=(x._device.where(x.data > 0, 1, 0) * cr_grad).astype(x._device.float32)
                 self_grad=x._device.where(x.data > 0, 1, 0) * cr_grad
             )
@@ -82,7 +82,7 @@ class Softmax(ActivationFunction):
             # CHADGPT. Calcolo introvabile. ChatGPT l'ha scritto versione Torch
             # e io l'ho confrontato alla softmax di PyTorch (ed era PERFETTA al
             # PRIMO TENTATIVO) e riadattato
-            x._backward(
+            x._run_backward(
                 self_grad=softmax.data * (cr_grad - x._device.sum(cr_grad * softmax.data, axis=self.dim, keepdims=True))
             )
 
@@ -122,7 +122,7 @@ class LogSoftmax(ActivationFunction):
             # Con bruteforce di CHADGPT e match di logica della softmax, ecco una
             # derivata di cui al momento non so assolutamente nulla sulla
             # sua derivazione matematica!
-            x._backward(
+            x._run_backward(
                 self_grad=cr_grad - x._device.exp(softmax.data) * cr_grad.sum(axis=self.dim, keepdims=True)
             )
 

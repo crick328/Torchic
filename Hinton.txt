@@ -1,0 +1,30 @@
+
+Creatività = capacità di fare analogie
++ weights = più possibilità di riconoscere e memorizzare patterns, _anche quelli che
+ancora non abbiamo riconosciuto noi stessi_
+Tra l'altro questo è quello che hai detto tu, ma per la capacità di comprendere anziché
+per la creatività 
+
+Il reinforcement learning di alphago è stata una chiave per farla uscire dai nostri
+pattern e fargliene cercare altri
+
+> Hinton pone una domanda: se prendi mnist e fai in modo che, randomicamente, il 50%
+delle labels sia sbagliato (con la stessa label sbagliata associata allo stesso campione),
+la rete imparerà comunque bene.
+Implicazione secondo Hinton: le reti neurali possono performare meglio dei dati di training
+
+> Pone un'altra questione: se silenzi metà dei neuroni di una rete e gli passi un input,
+migliora la sua capacità di generalizzare anziché peggiorare nella comprensione. 
+
+Hinton si riferisce sempre alpha go e alpha zero per indicare idee geniali
+
+
+Afferma che sia più facile imparare in forma multimodale perché hai più dati e
+modella meglio di per sé. Anche a parità di dati è meglio
+
+"Fast weights"
+
+Prossimi passi:
+- finire l'arco narrativo del Transformer
+- implementare reti CNN
+- combinarle

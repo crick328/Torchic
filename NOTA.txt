@@ -9,16 +9,23 @@ sono anche molto curioso di sapere come funzionano (anche grazie a Minecraft).
 OCCHIO che devi usare lo stesso algoritmo di PyTorch se vuoi che i tuoi seed
 diano gli stessi numeri suoi!
 
-Cerca di creare un modo per visualizzare l'architettura della rete
-(partendo dalle più semplici)
-
 Voglio implementare un modo semplice (e corretto) per quantizzare i modelli
 
 Stima memoria occupata (pensavo di fare sizeof(vettore 2x1 - vettore 1x1) per
 sapere quanto occupa una cella (risultato) e quanto la base dell'oggetto (q.tà sottratta - n celle))
 
-
 (!) Inizia a processare i dati di wikipedia!
+
+Rendi funzionante la lib anche senza import di CuPy
+
+(!) Vedi se puoi evitare di calcolare i grad per chi non lo richiede in backward.
+Dovrebbe essere quasi sempre meglio runnare una condizione che non calcolare un grad
+a chi non serve, aggiornarlo e poi eliminarlo! Ad esempio, perche' facendo
+self._run_backward() devi passare anche other? Sarebbe molto meglio chiamare
+self e other.run_backward! Non devi passare other ed e' piu' intuitivo, evitando
+anche di mettere l'if other is not None. Se separi puoi direttamente evitare
+la call, evitando pure di dover svuotare grad!!
+
 
 LIBRERIE
 cupy-cuda12x==13.0.0    (pip install cupy-cuda12x) 
@@ -30,3 +37,4 @@ snakeviz==2.2.0
 typing_extensions==4.9.0
 graphviz-0.20.3
 https://forum.graphviz.org/t/new-simplified-installation-procedure-on-windows/224
+pip install kaggle
