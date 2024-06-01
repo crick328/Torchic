@@ -5,6 +5,13 @@ import torchic.nn.initializers as inits
 # Linear Layer (corrisponde al Dense layer di Tensorflow se quest'ultimo è settato con activation=None)
 # sara' la classe da cui tutti i layer di tipo linear erediteranno
 # (devo farlo con Embeddings)
+
+# NOTE: al momento tutta la logica dei _weights e _bias e' inutilizzata perche' prima 
+# istanzi la classe e poi fai linear.weights = array. Scegli quale metodo preferisci
+# e cancella l'escluso. Secondo me quello attuale e' piu' flessibile (supporta
+# caricamenti separati e unici insieme al modello) ed e' sostanzialmente la stessa cosa.
+# O istanzi e assegni tramite args o prima istanzi e poi assegni, ma le tempistiche
+# sono quelle...
 class Linear:
     __slots__ = ("has_bias", "weights", "bias")
 
@@ -58,11 +65,19 @@ class Linear:
             return output + ")"
 
     def __repr__(self):
-        output = f"{self.__class__.__name__}(bias={self.has_bias}, _weights={repr(self.weights)}"
+        shape = self.weights.shape()
+        return f"{self.__class__.__name__}({shape[0]}, {shape[1]}, bias={self.has_bias})"
+        
+    def state_dict(self):
+        out_dict = {"class": self.__class__.__name__,
+                    "kwargs": {"_weights": self.weights.state_dict()}
+                    }
         if self.has_bias:
-            return output + f", _bias={repr(self.bias)})"
+            out_dict["kwargs"]["has_bias"] = True
+            out_dict["kwargs"]["_bias"] = self.bias.state_dict()
         else:
-            return output + ")"
+            out_dict["kwargs"]["has_bias"] = False
+        return out_dict
         
 
 class Embedding(Linear):

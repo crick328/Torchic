@@ -26,11 +26,13 @@ Test e cose da implementare per lavorare sul nuovo modello di assistente
     Architetture con solo encoder o decoder (tipo i LLama): perche'? Come fanno a funzionare? Qaul e' l'intuizione?
     Come si crea un multimodal latent space (sorta di embeddings che racchiude testo, serie di immagini e audio)?
     Come fa GPT-4o a produrre suoni, speech, immagini e testo? Come fa a scegliere cosa usare (dall-e e sora)?
-- Implementazione activation functions più moderne:
+- Activation functions più moderne:
     (c'è n'è una che è particolarmente popolare nei nuovi LLM);
     GeLU;
     SwiGLU;
     Layer aware delle activation function usate?
+- Optimizer piu' moderni (?):
+    Ci sono nuovi optimizers state of the art?
 - Prompting & advanced techniques:
     Come funziona la chain of thought? Esistono tecniche più recenti?
     Come posso far interagire il modello con funzioni/API esterne? (dando al modello una lista di tools di cui dispone, chiedendone di fargliene scegliere uno e fare una regex sull'output per chiamare la funzione scelta)
@@ -55,4 +57,3 @@ Test e cose da implementare per lavorare sul nuovo modello di assistente
     Come si processano in modo efficiente tonellate di dati?
 - New architectures:
     KAN
-    Large Action Models 

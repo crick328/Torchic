@@ -72,3 +72,7 @@ def memory_estimator(cls, data_manager, dim):
     output: memoria occupata
     '''
     pass
+
+
+def cat(tensors: list, dim: int=0, device=None) -> Tensor:
+    return Tensor(np.concatenate(tensors, axis=dim), device)

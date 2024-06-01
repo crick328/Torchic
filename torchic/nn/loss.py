@@ -1,5 +1,5 @@
 from torchic.cuda_tensor import Tensor
-from torchic.nn import Softmax, LogSoftmax
+from torchic.nn.activations import Softmax, LogSoftmax
 
 
 # posso fare in modo che self._xp sia definito in base al tensor che riceve?
@@ -17,12 +17,7 @@ class SELoss:
         - x: Tensor object containing the output of the network (predicted)
         - target: Tensor.data object containing the desired output values
         '''
-        #print(x.data.dtype)
         loss = Tensor(x._device.power(x.data - target.data, 2))
-        #print(x._device.power(x.data - target.data, 2).dtype)
-        # il config e' giusto, ma questo tensore si istanzia come float32...
-        #print(loss.data.dtype)
-        #print(DEFAULT['dtype'])
         
         def _SELoss_backward(gradient: Tensor) -> None:
             # non aggiorno il grad di loss perché la derivata di loss w.r.t. loss è 1
@@ -46,9 +41,6 @@ class NegativeLogLikehoodLoss:
     Si usi questa loss se si desidera scegliere il tipo di softmax da usare e se
     si vuole che faccia parte dei layer del modello, altrimenti optare per la cross entropy. 
     '''
-    def __init__(self):
-        pass
-
     def __call__(self, x_pred: Tensor, y_trg: Tensor, eps: int=1e-10) -> Tensor:
         '''
         pred_p: output tensor of model containing all out values

@@ -3,6 +3,7 @@
 # metodo interessante per mantenere nella cache i risultati: https://docs.python.org/3/library/functools.html#functools.lru_cache
 
 from torchic.cuda_tensor import Tensor
+import torchic.backward as back_op
 import numpy as np
 import cupy as cp
 
@@ -11,7 +12,9 @@ import cupy as cp
 # In questo modo, se faccio isistance(layer, ActivationFunction)
 # le spotto a prescindere dal nome
 class ActivationFunction:
-    pass
+    def __repr__(self):
+        output = f"{self.__class__.__name__}("
+        return output + f"{self.dim})" if hasattr(self, "dim") else output + ")"
 
 
 class Sigmoid(ActivationFunction):
@@ -24,10 +27,8 @@ class Sigmoid(ActivationFunction):
         sigmoid = Tensor(1/(1 + x._device.exp(-x)))
 
         def _sigmoid_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            x._run_backward(
-                # d/dσ = σ(x) * (1 - σ(x)); dL/dσ = d/dσ * prodotto derivate parziali delle operazioni precedenti
-                self_grad=sigmoid.data * (1 - sigmoid.data) * cr_grad
-            )
+            # d/dσ = σ(x) * (1 - σ(x)); dL/dσ = d/dσ * prodotto derivate parziali delle operazioni precedenti
+            x._run_backward( sigmoid.data * (1 - sigmoid.data) * cr_grad )
 
         if x.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
@@ -43,16 +44,10 @@ class ReLU(ActivationFunction):
     def __call__(self, x: Tensor) -> Tensor:
         output = Tensor(x._device.maximum(0, x.data))
 
-        def _ReLU_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            x._run_backward(
-                #self_grad=(x._device.where(x.data > 0, 1, 0) * cr_grad).astype(x._device.float32)
-                self_grad=x._device.where(x.data > 0, 1, 0) * cr_grad
-            )
-
         if x.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
             # non è più considerato leaf tensor
-            output.grad_fn = _ReLU_backward
+            output.grad_fn = back_op.ReLUBackward(x)
         return output
     
     def __repr__(self):
@@ -71,26 +66,14 @@ class Softmax(ActivationFunction):
         # l'efficacia del gradient.
         shiftx = x.data - x.data.max(axis=self.dim, keepdims=True)
         exps = x._device.exp(shiftx)
-        softmax = Tensor(exps / x._device.sum(exps, axis=self.dim, keepdims=True))
-
-        # NOTE: riciclare il calcolo della softmax è geniale! Fallo ovunque!
-        def _softmax_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            '''
-            la derivata della softmax è una matrice. Ogni colonna rappresenta una sua
-            derivata completa w.r.t. un input
-            '''
-            # CHADGPT. Calcolo introvabile. ChatGPT l'ha scritto versione Torch
-            # e io l'ho confrontato alla softmax di PyTorch (ed era PERFETTA al
-            # PRIMO TENTATIVO) e riadattato
-            x._run_backward(
-                self_grad=softmax.data * (cr_grad - x._device.sum(cr_grad * softmax.data, axis=self.dim, keepdims=True))
-            )
-
+        softmax = exps / x._device.sum(exps, axis=self.dim, keepdims=True)
+        output = Tensor(softmax)
+        
         if x.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
             # non è più considerato leaf tensor
-            softmax.grad_fn = _softmax_backward
-        return softmax
+            output.grad_fn = back_op.SoftmaxBackward(x, self.dim, softmax)
+        return output
     
     def __repr__(self):
         return f"Softmax(dim={self.dim})"
@@ -122,9 +105,7 @@ class LogSoftmax(ActivationFunction):
             # Con bruteforce di CHADGPT e match di logica della softmax, ecco una
             # derivata di cui al momento non so assolutamente nulla sulla
             # sua derivazione matematica!
-            x._run_backward(
-                self_grad=cr_grad - x._device.exp(softmax.data) * cr_grad.sum(axis=self.dim, keepdims=True)
-            )
+            x._run_backward( cr_grad - x._device.exp(softmax.data) * cr_grad.sum(axis=self.dim, keepdims=True) )
 
         if x.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché

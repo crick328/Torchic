@@ -48,4 +48,16 @@ torchic 1.x: refactoring della libreria e adattamento alla nomenclatura di PyTor
             Log Likehood Loss. Scoperta molta ciccia sul funzionamento dell'autograd originale, implementazione visualizzazione dei grafi di
             forward e backward, tentata ristrutturazione del processo di backpropagation. Creazione branch torchic.datasets con DataLoader,
             mnist e data preprocessing. Ristrutturazione codice di layers e Sequential con aggiunta di ereditarieta'. Implementato il supporto
-            di .mean() su piu' dimensioni con relativa backward e riscrittura della derivata, fix bug di print di Tensor,
+            di .mean() su piu' dimensioni con relativa backward e riscrittura della derivata, fix bug di print di Tensor. Implementazione di
+            std() e var() con relative backward.
+Passaggio a Torchic 2.0: Ristruttura di tutto il codice di backward, che e' stato diviso e riorganizzato in backward.py.
+            Questo approccio ha permesso di di:
+            - separare il codice;
+            - evitare di "compilare" la backward function ogni volta che si chiama una
+              funzione (cosa che cambia le performance in inference);
+            - selezionare cosa salvare per la backward e cosa no anziche' avere Python
+              che salva tutto (args inclusi);
+            - creare un vero grafo;
+            Riscrittura di parte del codice relativo ai grafi per supportare la visualizzazione del grafo di backward con shapes.
+            Riorganizzazione directory della libreria. Aggiunto il supporto per caricamento rapido e sicuro dei modelli senza perdita
+            di precisione grazie ai safetensors con relative funzioni.

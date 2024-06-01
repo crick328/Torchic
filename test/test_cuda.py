@@ -251,7 +251,7 @@ class Tensor:
             self._run_backward(
                 # converto cr_grad da
                 # output.shape a self.data.shape
-                self_grad=cr_grad.squeeze(dim)
+                grad=cr_grad.squeeze(dim)
             )
 
         if self.requires_grad:
@@ -270,7 +270,7 @@ class Tensor:
             self._run_backward(
                 # converto cr_grad da
                 # output.shape a self.data.shape
-                self_grad=cr_grad.reshape(self.data.shape)
+                grad=cr_grad.reshape(self.data.shape)
             )
         
         if self.requires_grad:
@@ -560,7 +560,7 @@ class Tensor:
             self._run_backward(
                 # d/dx( (x-x.mean)^2 / (N) )
                 # = 2(x-x.mean) / N
-                self_grad= 2*x/n * cr_grad
+                grad= 2*x/n * cr_grad
             )
         
         if self.requires_grad:
@@ -607,7 +607,7 @@ class Tensor:
 
                 # evito una possibile division by zero esplicando che voglio la divisione
                 # solo dove i valori sono != 0
-                self_grad= self._device.divide(x, denominator, where= denominator!=0) * cr_grad
+                grad= self._device.divide(x, denominator, where= denominator!=0) * cr_grad
             )
         
         if self.requires_grad:
@@ -628,17 +628,17 @@ class Tensor:
             # quindi non la definisco per __radd__
 
             # forse ha piu' senso fare cr_grad.reshape()
-            cr_grad = cr_grad.reshape(self.data.shape)
+            #cr_grad = cr_grad.reshape(self.data.shape)
 
             if self.requires_grad:
                 self._run_backward(
                     # derivata parziale w.r.t self, cioè x. d/dx(x+a)=1 ==> d/dx(x+y)=1+0, cioè self con i valori a 1.
-                    grad=cr_grad#self._device.ones(self.data.shape) * cr_grad
+                    grad=self._device.ones(self.data.shape) * cr_grad
                 )
             if other.requires_grad:
                 other._run_backward(
                     # derivata parziale w.r.t other, cioè y. d/dy(a+y)=1 ==> d/dy(x+y)=0+1, cioè other con i valori a 1.
-                    grad=cr_grad#self._device.ones(self.data.shape) * cr_grad
+                    grad=self._device.ones(self.data.shape) * cr_grad
                 )
         
         if self.requires_grad or other.requires_grad:
@@ -652,13 +652,13 @@ class Tensor:
         output = Tensor(self.data - other.data)
 
         def _sub_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            self._run_backward(
+            if self.requires_grad:
                 # derivata parziale w.r.t self, cioè x. d/dx(x-a)=1 ==> d/dx(x-y)=1-0, cioè self con i valori a 1.
-                self_grad=self._device.ones(self.data.shape) * cr_grad,
-                other=other,
+                self._run_backward(self._device.ones(self.data.shape) * cr_grad)
+
+            if other.requires_grad:
                 # derivata parziale w.r.t other, cioè y. d/dy(a-y)=-1 ==> d/dy(x-y)=0-1, cioè other con i valori a -1.
-                other_grad=-self._device.ones(other.data.shape) * cr_grad
-            )
+                other._run_backward(-self._device.ones(other.data.shape) * cr_grad)
 
         if self.requires_grad or other.requires_grad:
             output.grad_fn=_sub_backward
@@ -668,13 +668,13 @@ class Tensor:
         output = Tensor(self.data * other.data)
 
         def _mul_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            self._run_backward(
+            if self.requires_grad:
                 # d/dx( x*y ) => d/dx(x)*y = 1*y = y
-                self_grad= other.data * cr_grad,
-                other=other,
+                self._run_backward(other.data * cr_grad)
+
+            if other.requires_grad:
                 # d/dy( x*y ) => d/dx(y)*x = 1*x = x
-                other_grad= self.data * cr_grad
-            )
+                other._run_backward(self.data * cr_grad)
 
         if self.requires_grad or other.requires_grad:
             output.grad_fn = _mul_backward
@@ -684,16 +684,15 @@ class Tensor:
         output = Tensor(self.data / other.data)
 
         def _div_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            self._run_backward(
+            if self.requires_grad:
                 # d/dx( x/y ) = d/dx(x) * 1/y = 1 * 1/y = 1/y
                 # usando la funzione evito errori div by zero
-                self_grad= other._device.reciprocal(other.data)  *cr_grad,
-                other=other,
-                # d/dy( x/y ) = d/dy(1/y)*x = -1/y^2 * x =
-                # x/y^2
+                self._run_backward(other._device.reciprocal(other.data)  *cr_grad)
+
+            if other.requires_grad:
+                # d/dy( x/y ) = d/dy(1/y)*x = -1/y^2 * x = -x/y^2
                 # per il momento non gestisco div by zero
-                other_grad= self.data / other._device.power(other.data, 2) * cr_grad
-            )
+                other._run_backward(-self.data / other._device.power(other.data, 2) * cr_grad)
 
         if self.requires_grad or other.requires_grad:
             output.grad_fn = _div_backward
@@ -719,10 +718,9 @@ class Tensor:
         output = Tensor(-self.data)
 
         def _neg_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            self._run_backward(
-                # d/dSelf(data * -1) = d/dSelf(data) * -1 = ones(len(data)) * -1
-                self_grad= -self._device.ones(self.data.shape) * cr_grad
-            )
+            # d/dx(x * -1) = d/dx(x) * -1 = ones(len(x)) * -1
+            # NOTE: forse conviene fare -cr_grad.reshape
+            self._run_backward(-self._device.ones(self.data.shape) * cr_grad)
 
         if self.requires_grad:
             output.grad_fn = _neg_backward
@@ -732,9 +730,7 @@ class Tensor:
         output = Tensor(self._device.power(self.data, number))
 
         def _pow_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            self._run_backward(
-                self_grad=number * self._device.power(self.data, number-1) * cr_grad
-            )
+            self._run_backward(number * self._device.power(self.data, number-1) * cr_grad)
 
         if self.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché

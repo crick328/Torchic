@@ -1,1 +1,1 @@
-from torchic.tools.tensor_utils import cat
+from torchic.tools.helper import cat
