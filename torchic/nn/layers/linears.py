@@ -112,7 +112,8 @@ class Embedding(Linear):
         #self.weights = inits.xavier_norm(vocab_size, embedding_size) if _weights is None else _weights
     
     def __call__(self, x: Tensor) -> Tensor:
-        return self.weights[x._device.nonzero(x)[0]]
+        # OCCHIO: NON e' UN tensor e cosi' non andrebbe
+        return Tensor(self.weights[x._device.nonzero(x)[0]], requires_grad=True)
 
 
 class Dropout:

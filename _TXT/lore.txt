@@ -46,7 +46,7 @@ torchic 1.x: refactoring della libreria e adattamento alla nomenclatura di PyTor
             in modo da non doverlo scrivere ogni volta con aggiunta di metriche e plot delle stesse. Aggiustato un bug nel setter di grad_fn
             che permetteva di sovrascrivere la grad_fn quando non poteva esserlo. Implementazione di Categorical Cross Entropy Loss e Negative
             Log Likehood Loss. Scoperta molta ciccia sul funzionamento dell'autograd originale, implementazione visualizzazione dei grafi di
-            forward e backward, tentata ristrutturazione del processo di backpropagation. Creazione branch torchic.datasets con DataLoader,
+            forward e backward (artificiale), tentata ristrutturazione del processo di backpropagation. Creazione branch torchic.datasets con DataLoader,
             mnist e data preprocessing. Ristrutturazione codice di layers e Sequential con aggiunta di ereditarieta'. Implementato il supporto
             di .mean() su piu' dimensioni con relativa backward e riscrittura della derivata, fix bug di print di Tensor. Implementazione di
             std() e var() con relative backward.
@@ -61,3 +61,8 @@ Passaggio a Torchic 2.0: Ristruttura di tutto il codice di backward, che e' stat
             Riscrittura di parte del codice relativo ai grafi per supportare la visualizzazione del grafo di backward con shapes.
             Riorganizzazione directory della libreria. Aggiunto il supporto per caricamento rapido e sicuro dei modelli senza perdita
             di precisione grazie ai safetensors con relative funzioni.
+Torchic 2.x: Introduzione della property dtype per compatibilita' con PyTorch e easy of use. Correzione errore nel calcolo della
+            CrossEntropyLoss, aggiornamento della sua backward function al nuovo paradgima, aggiunto supporto per piu'
+            dimensioni e implementazione dei parametri "reduction", "ignore_index" e "label_smoothing".
+            Introdotta (finalmente) la possibilita' di dichiarare dinamicamente il tipo dei tensori in base al tipo
+            di dato che ricevono quando sono istanziati con annessa la trasmissione dinamica dei tipi tramite le operazioni.

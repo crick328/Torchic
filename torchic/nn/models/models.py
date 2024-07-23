@@ -77,6 +77,15 @@ class Sequential:
     
     
     def __str__(self):
+        '''
+        versione di pytorch:
+        Sequential(
+            (0): Linear(in_features=10, out_features=10, bias=True)
+            (1): ReLU()
+            (2): Linear(in_features=10, out_features=20, bias=True)
+            (3): Softmax(dim=1)
+        )
+        '''
         return "Non hai messo una print string per Sequential... Never gonna give you up!"
 
     

@@ -62,6 +62,21 @@ class AddBackward(BackwardFunction):
             y._run_backward(cr_grad)
 
 
+class _CELossBackward(BackwardFunction):
+    def __call__(self, cr_grad: np.ndarray|cp.ndarray) -> None:
+        x: "Tensor"
+        softmax_x: "Tensor"
+        target: "Tensor"
+        x, softmax_x, target = self.ctx
+
+        cr_grad = x._device.expand_dims(cr_grad, -1)
+        #print(f"crgrad {cr_grad}")
+        #print(f"x {x}")
+        cr_grad = x._device.broadcast_to(cr_grad, x.data.shape)
+
+        x._run_backward((softmax_x - target).data * cr_grad)
+
+
 class DivBackward(BackwardFunction):
     def __call__(self, cr_grad: np.ndarray|cp.ndarray) -> None:
         x: "Tensor"
@@ -178,6 +193,7 @@ class PowBackward(BackwardFunction):
 
 
 class ReLUBackward(BackwardFunction):
+    # numpy nativamente fa (int32 * float32 = float64)
     def __call__(self, cr_grad: np.ndarray|cp.ndarray) -> None:
         x: "Tensor"
         x, = self.ctx
@@ -220,10 +236,25 @@ class SubBackward(BackwardFunction):
 
 class SumBackward(BackwardFunction):
     def __call__(self, cr_grad: np.ndarray|cp.ndarray) -> None:
+        '''
         x: "Tensor"
-        #x = self.ctx[0]
         x, = self.ctx
         x._run_backward(cr_grad.reshape(x.data.shape))
+        '''
+
+        x: "Tensor"
+        dim: int
+        x, dim = self.ctx
+
+        if dim is not None:
+            cr_grad = x._device.expand_dims(cr_grad, dim)
+        cr_grad = x._device.broadcast_to(cr_grad, x.data.shape)
+
+        # d/dx( (x + y + ... + z)) = [d/dx(x) + d/dx(y) + ... + d/dx(z)]
+        # sto derivando w.r.t. x => le altre le tratto come costanti
+        # = [1 + 0 + ... + 0] = 1
+        # dL/dx = grad * 1
+        x._run_backward(cr_grad)
 
 
 class StdBackward(BackwardFunction):

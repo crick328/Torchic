@@ -14,52 +14,49 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 
 
 
-class DataLoader:
+
+    
+# questa classe e' un po' sus. Sembra un ammasso di schifo, contiene
+# sia training che eval, non supporta nativamente le batch e
+# funziona staticamente (cosa che rende il codice molto strano)
+class AutoMnist:
+    # codice riadattato da https://github.com/datapythonista/mnist
     api = KaggleApi()
     api.authenticate()
-    directory = None
-
-    def _preprocess_images(data: np.ndarray, device=None):
-        return norm_and_flatten_images(data, device)
-    
-    def _to_ohe(data: np.ndarray, device=None):
-        return labels_to_OHE(data, device)
-    
-
-class mnist(DataLoader):
-    # codice riadattato da https://github.com/datapythonista/mnist
     directory = tempfile.gettempdir()
-    DataLoader.api.dataset_download_files(
-        dataset='hojjatk/mnist-dataset',    # name
-        path=directory,         # dest. dir
-        unzip=True)
+
+    if not os.path.exists(os.path.join(directory, r"train-images-idx3-ubyte")):
+        api.dataset_download_files(
+            dataset='hojjatk/mnist-dataset',    # name
+            path=directory,         # dest. dir
+            unzip=True)
 
     @classmethod
     def train_images(cls, device=None, preprocess=True):
         data = cls._parse_mnist(r"train-images-idx3-ubyte")
         if preprocess:
-            return cls._preprocess_images(data, device)
+            return norm_and_flatten_images(data, device)
         return data
 
     @classmethod
     def test_images(cls, device=None, preprocess=True):
         data = cls._parse_mnist(r"t10k-images-idx3-ubyte")
         if preprocess:
-            return cls._preprocess_images(data, device)
+            return norm_and_flatten_images(data, device)
         return data
 
     @classmethod
     def train_labels(cls, device=None, one_hot_encode=True):
         labels = cls._parse_mnist(r"train-labels-idx1-ubyte")
         if one_hot_encode:
-            return cls._to_ohe(labels, device)
+            return labels_to_OHE(labels, device)
         return labels
 
     @classmethod
     def test_labels(cls, device=None, one_hot_encode=True):
         labels = cls._parse_mnist(r"t10k-labels-idx1-ubyte")
         if one_hot_encode:
-            return cls._to_ohe(labels, device)
+            return labels_to_OHE(labels, device)
         return labels
 
     @classmethod
@@ -67,12 +64,12 @@ class mnist(DataLoader):
         # doppio filename perche' dezzippa sia come filename e sia in una
         # cartella filename/filename (e python da errore quando prova a 
         # leggere la prima)
-        trg_filename = os.path.join(mnist.directory, filename, filename)
+        trg_filename = os.path.join(AutoMnist.directory, filename, filename)
         print(trg_filename)
         #fopen = gzip.open if os.path.splitext(filename)[1] == '.gz' else open
 
         with open(trg_filename, 'rb') as fd:
-            return mnist._parse_idx(fd)
+            return AutoMnist._parse_idx(fd)
 
     @classmethod
     def _parse_idx(cls, fd):

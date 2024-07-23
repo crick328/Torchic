@@ -74,5 +74,10 @@ def memory_estimator(cls, data_manager, dim):
     pass
 
 
-def cat(tensors: list, dim: int=0, device=None) -> Tensor:
-    return Tensor(np.concatenate(tensors, axis=dim), device)
+def cat(tensors: list[Tensor], dim: int=0, device=None, dtype=None) -> Tensor:
+    # questa funzione ha bisogno di un rework. Deve prendere in input una
+    # lista di tensors (anziche' di np), deve controllare che tutto sia
+    # sullo stesso device e chiamare np o cp da un ._device di un tensor
+    # per chiamare opportunamente np o cp
+
+    return Tensor(np.concatenate(tensors, axis=dim), device=device, dtype=dtype)

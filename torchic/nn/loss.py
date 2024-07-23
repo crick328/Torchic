@@ -1,5 +1,8 @@
 from torchic.cuda_tensor import Tensor
 from torchic.nn.activations import Softmax, LogSoftmax
+import torchic.backward as back_op
+
+# check derivata
 
 
 # posso fare in modo che self._xp sia definito in base al tensor che riceve?
@@ -63,38 +66,122 @@ class NegativeLogLikehoodLoss:
 
 class CrossEntropyLoss:
     '''
-    Loss function che e' una combinazione ottimizzata di `torch.nn.LogSoftmax` e
-    `torch.nn.NegativeLogLikehoodLoss`. Viene eseguita la log softmax sul tensore
-    `x` e poi viene calcolata la loss. Per questo motivo, la funzione vuole i raw
-    values dell'ultimo layer del modello (quindi senza softmax & co. come activation
-    function finale).
+    Combinazione ottimizzata di `torch.nn.LogSoftmax` e `torch.nn.NegativeLogLikehoodLoss`.
+    Viene eseguita la (log) softmax sul tensore `x` e poi viene calcolata la loss. Per
+    questo motivo, la funzione vuole i raw values dell'ultimo layer (logits) del modello
+    (quindi senza softmax & co. come activation function finale).
     '''
-    def __init__(self) -> None:
-        self.log_soft = LogSoftmax()
-        self.softmax = Softmax()
+    def __init__(self, reduction: str="mean", ignore_index: int=-100, label_smoothing: int=0.0) -> None:
+        '''
+        Args:
+            reduction (str, optional): the reduction to apply on the final loss.
+                Can be `none`, `sum` or `mean` (default value).
+            ignore_index (int, optional): Specifies a target value (which should
+                represent a class) that is ignored and does not contribute to the
+                input gradient.
+                Target has to be an array of integer containing the class labels.
+                Default is `-100` (which means not applied).
+            label_smoothing (float, optional): redistributes the target probabilities
+                to lower the correct class value and increase the other classes.
+                This reduce the model confidence, (hopefully) allowing for
+                better generalization and less overfitting.
+                value can be `[0.0, 1.0]`. Default is `0.0`.
+        '''
+        self.log_soft = LogSoftmax(-1)
+        self.softmax = Softmax(-1)
+        self.reduction = reduction
+        self.ignore_index = ignore_index
+        self.label_smoothing = label_smoothing
 
     def __call__(self, x: Tensor, target: Tensor) -> Tensor:
         '''
-        Returns a scalar `Tensor`.
+        La versione 2D da' per scontato che il *vettore* target ricevuto siano
+        *le labels* delle classi giuste!
+        La con x 1D vuole che target sia un vettore one hot encoded, la versione
+        2D vuole che target sia sempre un vettore, percio', per contenere
+        le risposte corrette di ogni riga di x, deve far si' che ogni label
+        sia convertito nel suo corrispettivo OHE!
+        Il [target.data] serve proprio per risistemare le righe della
+        matrice identita' in modo che la riga della matrice sia la
+        OHE del valore corrispondente di target!
+        Es:
+        target = [2, 1, 1]
+        one_hot_targets = eye(3)[target]
+           |0 0 1|   |2|
+        => |0 1 0| = |1|
+           |0 1 0|   |1|
+        Questo spiega perche' la versione 2D richiede che target sia
+        composto da interi: i suoi valori sono usati come indici! E
+        grazie a loro che si ottiene la matrice "rimescolata"!
+        Questo spiega anche perche' ignore_index e' accettato solo
+        quando x e' 2D. Infatti, se x e' 1D, target e' un vettore
+        one hot encoded, quindi l'unico valore ignorabile sarebbe
+        1, che non ha senso!
+        Infine, questo spiega perche', in caso di x bidimensionale,
+        target non puo' avere un valore maggiore dell'ultima
+        dimensione di x (cioe' delle singole prediction): rappresenterebbe
+        una classe che non esiste sul lato logico, mentre sul pratico
+        il codice si rompe perche' quel valore non puo' essere usato
+        come index per "riordinare" la matrice identita', che ha
+        perfettamente senso.
 
-        Args:
-            x (Tensor): raw output (logits) of the model (1-dim only).
-            target (Tensor): one hot encoded label vector of the correct class (1-dim only).
+        NOTA: non so come si comporta per x.dim() == 3!
         '''
-        lsoft_p = self.log_soft(x)
-        #tmp = -Tensor(target_p.data * pred_p._device.log(soft_p.data + eps), True)
-        loss = -Tensor(x.data * lsoft_p.data).sum()
-        #loss = -Tensor(target_p.data * pred_p._device.log(tmp.data + eps)).sum()#.mean()
-        #loss = -Tensor(pred_p._device.log(tmp.data[target_p.data.argmax()] + eps))
+        #- se x e target hanno le stesse dim, target puo' essere
+        #  di qualsiasi dtype
+        #- se x.dim() == 2 && target.dim() == 1, il dtype di
+        #  target deve essere int e deve rappresentare le labels non ohe
+        
 
-        def _CELoss_backward(cr_grad):
-            #pred_p.grad_fn(-target_p.data/(soft_p.data + eps) * cr_grad)
-            #pred_p.grad_fn = None
-            x._run_backward(
-                # self_grad= -target_p.data/(soft_p.data + eps) * cr_grad
-                self_grad=(self.softmax(x)-target).data * cr_grad
-            )
+        num_classes = x.data.shape[-1]
+        
+        #if x.data.ndim == 1:
+        if x.data.ndim == target.data.ndim:
+            # Questo funziona per prediction 1D
+            smoothed_targets = Tensor(target.data * (1 - self.label_smoothing) + self.label_smoothing / num_classes)
+        else:
+            # Questo funziona per prediction 2D
+            one_hot_targets = x._device.eye(num_classes)[target.data]
+            smoothed_targets = Tensor(one_hot_targets * (1 - self.label_smoothing) + self.label_smoothing / num_classes)
 
-        if x.requires_grad:
-            loss.grad_fn =  _CELoss_backward
+        log_prob_x = self.log_soft(x)
+        loss = -(smoothed_targets * log_prob_x).sum(-1)
+        
+        if self.ignore_index != -100:
+            from torchic import int64
+            if not target._device.issubdtype(target.dtype, target._device.integer):
+                #target.data = Tensor._to_dtype(target.data, int64)
+                raise RuntimeError(
+                    f"'ignore_index' supports only integer target dtype, "
+                    f"received {target.dtype} dtype instead "
+                    "(Note that you have to specify the dtype when creating "
+                    "the target tensor or else will be casted to the default "
+                    "dtype of the library)."
+                )
+            mask = Tensor(target.data != self.ignore_index, device=target.device, dtype=int64)
+            loss *= mask
+        
+
+        match(self.reduction):
+            case "none":
+                pass
+            case "sum":
+                loss = loss.sum()
+            case "mean":
+                if self.ignore_index != -100:
+                    loss = (loss * mask).sum() / mask.sum()
+                else:
+                    loss = loss.mean()
+            case _:
+                raise ValueError(
+                    f"Received {self.reduction} as reduction value, but only "
+                    "'none', 'sum' or 'mean' is valid."
+                    )
+
+        # eh, la backward ad hoc non sembra funzionare
+        # con l'aggiunta dei vari parametri... Percio'
+        # ho scritto tutta la __call__ con il framework
+        # di autograd in modo che tutto sia backpropagabile
+        #if x.requires_grad:
+            #loss.grad_fn = back_op.CELossBackward(x, self.softmax(x), target)
         return loss

@@ -1,38 +1,22 @@
 # ha ragione il bro di stackoverlow: non sta alla classe Tensor il cambio dei device
 # di tutte le istanze, ma a chi li contiene (layer e modelli!)
-import torchic
 import timeit
 import cupy as cp
 import numpy as np
 import torch
 import time
-
+import sys
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.0")
 from torchic import Tensor
 from torchic import nn
 from torchic.tools.visualization.graphs import draw_graph
 
 
-model = nn.Sequential(
-    nn.Linear(2, 500),
-    nn.ReLU(),
-    nn.Linear(500, 250),
-    nn.ReLU(),
-    nn.Linear(250, 100),
-    nn.ReLU(),
-    nn.ReLU(),
-    nn.Linear(100, 10),
-    nn.Softmax(0)
-)
-res = model(Tensor([1,2]))
-draw_graph(model, res, rankdir="TB")
-
-#print(res.grad_fn.ctx[2] is res.data)
-
-
-
-res.mean().backward()
-#draw_dot(res)
-#draw_model_dot(model)
+a = [1,2,3]
+b = np.array(a, np.int64)
+# se il default della lib e' 32, voglio convertirlo
+# in int32. Percio', dovrei leggere il suo dtype e castarlo a 32
+print(b.dtype.kind)
 
 '''
 import test_cuda
@@ -62,10 +46,10 @@ print(b.grad)
 
 
 
-#t1 = timeit.timeit('a@b', number=1, setup="import cupy as cp; a=cp.random.normal(loc=0.0, scale=1, size=(10000, 10000)); b=cp.random.normal(loc=0.0, scale=1, size=(10000, 10000))")
+t1 = timeit.timeit('a@b', number=1, setup="import cupy as cp; a=cp.random.normal(loc=0.0, scale=1, size=(10000, 10000)); b=cp.random.normal(loc=0.0, scale=1, size=(10000, 10000))")
 #print(t1)
 
-#t1 = timeit.timeit('a@b', number=1, setup="import numpy as np; a=np.random.normal(loc=0.0, scale=1, size=(10000, 10000)); b=np.random.normal(loc=0.0, scale=1, size=(10000, 10000))")
+t1 = timeit.timeit('a@b', number=1, setup="import numpy as np; a=np.random.normal(loc=0.0, scale=1, size=(10000, 10000)); b=np.random.normal(loc=0.0, scale=1, size=(10000, 10000))")
 #print(t1)
 
 
@@ -84,6 +68,13 @@ print(t1) #
 t0 = timeit.timeit('og3=og1.matmul(og2); og5=og3+og4; og5.mean().backward()', number=10000, setup="import torchic; import numpy as np; device='cpu'; og1=torchic.cuda_tensor.Tensor(np.random.random((1,3000)), True, device=device); og2=torchic.cuda_tensor.Tensor(np.random.random((3000,1000)), True, device=device); og4=torchic.cuda_tensor.Tensor(np.random.random((1,1000)), True, device=device)")
 print(t0) #
 '''
+
+
+
+t1 = timeit.timeit('c=3*a', number=10000, setup='import cupy as cp; a=cp.random.random((1200,1200))')
+print(t1)
+t2 = timeit.timeit('c=b*a', number=10000, setup='import cupy as cp; a=cp.random.random((1200,1200)); b=cp.array(3)')
+print(t2)
 
 
 

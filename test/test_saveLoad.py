@@ -22,15 +22,52 @@ dd = nn.Sequential(
     nn.Linear(10,20),
     nn.Softmax(1)
 )
-#print(model.state_dict())
-#save_model(model)
 
-#preview_safetensor("model.safetensors")
-model=load_architecture("model.safetensors",allow_eval=True)
-#print(model.linear0.weights)
-#d = load_safetensors("model.safetensors", True)
+#model=load_architecture("model.safetensors",allow_eval=True)
+#print(repr(model))
 
-#print(d["metadata"]["architecture"])
-#print(d)
 
-#load_params_from_file(model, "model.safetensors")
+
+import re
+
+def parse_model_string(model_str):
+    # Rimuovi spazi bianchi superflui e le nuove linee
+    model_str = model_str.replace('\n', '').replace(' ', '')
+    
+    # Trova il contenuto all'interno di nn.Sequential(...)
+    match = re.search(r'nn.Sequential\((.*)\)', model_str)
+    if not match:
+        return []
+
+    layers_str = match.group(1)
+    
+    # Trova i layer definiti all'interno della stringa
+    layer_matches = re.findall(r'nn\.\w+\([^)]*\)', layers_str)
+    
+    layers = []
+    for layer in layer_matches:
+        # Estrai il nome del layer e i suoi argomenti
+        layer_name_match = re.match(r'nn\.(\w+)\((.*)\)', layer)
+        if layer_name_match:
+            layer_name = layer_name_match.group(1)
+            layer_args = layer_name_match.group(2)
+            
+            # Crea un dizionario con il nome del layer e i suoi argomenti
+            layer_info = {'layer': layer_name, 'args': layer_args}
+            layers.append(layer_info)
+    
+    return layers
+
+# Esempio di utilizzo
+model_str = """
+nn.Sequential(
+    nn.Linear(10, 10, bias=True),
+    nn.ReLU(),
+    nn.Linear(10, 20, bias=True),
+    nn.Softmax(dim=1),
+)
+"""
+
+parsed_layers = parse_model_string(model_str)
+for layer in parsed_layers:
+    print(layer)

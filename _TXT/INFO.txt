@@ -15,15 +15,19 @@ Test e cose da implementare per lavorare sul nuovo modello di assistente
 - Tokenizers (incidono molto sulle performance):
     Come funzionano?
 - Transformers:
-    Quanta memoria e potenza di calcolo devo avere per il training? Posso fare qualcosa per ridurla (sia a livello di architettura sia di libreria)?
-    Come funziona il Transformers++ (Llama3 (pubblicheranno paper), Phi ad esempio)?
+    Quanta memoria e potenza di calcolo devo avere per il training? Posso fare
+        qualcosa per ridurla (sia a livello di architettura sia di libreria)?
+    Come funziona il "Transformers++" (Llama3 (pubblicheranno paper), Phi ad esempio)?
     Test implementazione Mix of Expert;
     Test implementazione Rotationary Positional Encoding (RoPE);
-    Quanta differenza fa usare una sola lingua e limitare i tokens, tipo togliendo i numeri, le parole con poche occorrenze e i simboli come le parentesi?
+    Quanta differenza fa usare una sola lingua e limitare i tokens, tipo togliendo i
+        numeri, le parole con poche occorrenze e i simboli come le parentesi?
     Ricerca su Group (Multi) Query Attention (QGA);
     (https://github.com/hkproj/pytorch-llama/blob/main/Slides.pdf)
-    Come posso evitare la computazione di embeddings vuoti quando i token in input sono molto inferiori alla max context len?
-    Architetture con solo encoder o decoder (tipo i LLama): perche'? Come fanno a funzionare? Qaul e' l'intuizione?
+    Come posso evitare la computazione di embeddings vuoti quando i token in input
+        sono molto inferiori alla max context len?
+    Architetture con solo encoder o decoder (tipo i LLama): perche'? Come fanno a
+        funzionare? Qual e' l'intuizione?
     Come si crea un multimodal latent space (sorta di embeddings che racchiude testo, serie di immagini e audio)?
     Come fa GPT-4o a produrre suoni, speech, immagini e testo? Come fa a scegliere cosa usare (dall-e e sora)?
 - Activation functions più moderne:
@@ -35,24 +39,37 @@ Test e cose da implementare per lavorare sul nuovo modello di assistente
     Ci sono nuovi optimizers state of the art?
 - Prompting & advanced techniques:
     Come funziona la chain of thought? Esistono tecniche più recenti?
-    Come posso far interagire il modello con funzioni/API esterne? (dando al modello una lista di tools di cui dispone, chiedendone di fargliene scegliere uno e fare una regex sull'output per chiamare la funzione scelta)
-    Come funziona il Reinforcement Learning with Human Feedback? (https://www.youtube.com/watch?v=qGyFrqc34yc&pp=ygUXdW1hciBqYW1pbCB0cmFuc2Zvcm1lcnM%3D)
+    Come posso far interagire il modello con funzioni/API esterne?
+        (dando al modello una lista di tools di cui dispone, chiedendone di fargliene
+        scegliere uno e fare una regex sull'output per chiamare la funzione scelta)
+    Come funziona il Reinforcement Learning with Human Feedback?
+        (https://www.youtube.com/watch?v=qGyFrqc34yc&pp=ygUXdW1hciBqYW1pbCB0cmFuc2Zvcm1lcnM%3D)
     Come si quantizza un modello? Quali sono i pro e i contro? (Jamil ha un video)
-    Come si fa l'unione dei weigths di più reti neurali specialzzate in campi diversi? Che benefici e limiti ha?
+    Come si fa l'unione dei weigths di più reti neurali specialzzate in campi diversi?
+        Che benefici e limiti ha?
     Cos'e' l'augmented retrivial (o Retrivial augmented generation)?
     Come entrano in gioco e cosa fanno i "software wrapper" come Guard 2 o Code Shield (entrambi di Meta)?
     Come si usa la cosine similarity?
     Cosa sono i bfloat16?
-    Come fanno certi modelli ad andare in inference con gli int8 (Autopilot incluso)? Sembra che la maggior parte dei nuovi chip sia specializzata su int8 e floatb16
+    Come fanno certi modelli ad andare in inference con gli int8 (Autopilot incluso)?
+        Sembra che la maggior parte dei nuovi chip sia specializzata su int8 e floatb16
     Cos'e' la densification?
-    A quanto pare il training dei LLM viene fatto con x istanze che vengono trainate su n gpu (probabilmente su parti diverse del dataset).
+    A quanto pare il training dei LLM viene fatto con x istanze che vengono trainate
+        su n gpu (probabilmente su parti diverse del dataset).
         Ma come funziona? E' simile al RL dove si sceglie un modello che ha la loss minore,
         si uniscono i weights a fine training o si aggiungono i gradient prima del pass
         dell'optimizer e si aggiornano con quelli?
+    A quanto pare c'e' la possibilita' di scrivere codice "specializzato" nella gestione di
+        LLMs che permette di farle fare un inference piu' veloce. Una di queste librerie
+        si chiama vLLM per Python
+    Come funziona il Retrivial Augmented Generation (RAG)?
+    Ternary weights: i params possono essere solo 0, 1 e -1 e la rete 
+        funziona lo stesso
 - Dataset:
     Quanto impatta la qualita' dei dati?
     La quantita' puo' ovviare una qualita' piu' bassa e viceversa?
-    E' vero che si puo' fare 95% in una lingua e il resto in decine e decine di lingue diverse perche' il modello riesce a trasferire la comprensione?
+    E' vero che si puo' fare 95% in una lingua e il resto in decine e decine di lingue
+        diverse perche' il modello riesce a trasferire la comprensione?
     Con quali criteri si filtrano i dati buoni?
     Come si processano in modo efficiente tonellate di dati?
 - New architectures:

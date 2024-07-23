@@ -6,6 +6,7 @@ import warnings
 
 from torchic.settings import DEFAULT
 import torchic.backward as back_op
+from torchic.dtypes import get_type, dtype_map
 
 
 # Controlla se la rete non si traina con certi init per gli exploding gradients
@@ -36,7 +37,7 @@ import torchic.backward as back_op
 # => se  gli ndarray coinvolti non hanno tutti lo stesso tipo, loro danno float64
 # (se dtype e' implicito)!
 
-# RECAP: il dtype del forward e' garantito essere uguale al DEFAULT["dtype"] grazie
+# RECAP: il dtype del forward e' garantito essere uguale al  grazie
 # a __data_manager() (cosa che accade sempre perche' gli ouutput sono castati a Tensor),
 # mentre per la backward casto i singoli grad in _backward() con .astype(DEFAULT['dtype'], copy=False)
 
@@ -73,18 +74,16 @@ class Tensor:
             True per convenzione se `requires_grad = False`: Altrimenti,
             è `True` se il tensor non è frutto di operazioni.
             Automaticamente impostato a `False` se viene assegnata una `grad_fn`. 
-        _grad_fn: contiene la derivata parziale della funzione in cui è stato coinvolto
-            il tensor. La funzione prende in input il cr_grad, ovvero un Tensor con il
-            prodotto delle derivate parziali dei layer precedenti.
+        _grad_fn (`BackwardFunction`):
             La variabile è `None` se il tensor è leaf. Viene automaticamente reimpostata
             a None dopo ogni passaggio.
         grad: contiene il gradient della loss w.r.t self. Calcolato tramite
             la grad_fn se requires_grad è `True`.
             Viene automaticamente reimpostata a None se il tensor non è leaf.
     '''
-    __slots__ = ("data", "_requires_grad", "_device", "_is_leaf", "_grad_fn", "grad")
+    __slots__ = ("data", "_requires_grad", "_device", "_is_leaf", "_grad_fn", "_grad")
 
-    def __init__(self, data, requires_grad: bool=False, device: str=None):
+    def __init__(self, data, requires_grad: bool=False, device: str=None, dtype: np.dtype=None):
         '''
         Returns a `Tensor` on `device` with dtype `torch.settings.DEFAULT["dtype"]`.
 
@@ -95,60 +94,17 @@ class Tensor:
             device (str, optional): can be either `"cpu"` or `"cuda"`.
                 Default is `torch.settings.DEFAULT["device"]`.
         '''
-        self.data, self._device = self.__data_manager(data, device)
+        #self.data, self._device = self.__data_manager(data, device)
+        #self.data = self._to_dtype(data, DEFAULT['dtype'])
+        self.data, self._device = self._manage_data(data, device, dtype)
         self._requires_grad = requires_grad
         self._is_leaf = True
         self._grad_fn = None
-        self.grad = None
+        self._grad = None
 
-    # ===== INIT FUNCTIONS =====
-
-    # usata solo nell'init (double underscore per indicarlo, come da convenzione)
-    @staticmethod
-    def __data_manager(data, device: str=None) -> ModuleType:
-        '''
-        If dtype is None, default to config dict (which is float32)
-        '''
-
-        # questo caso si verificherà per tutti i child tensor, cioe'
-        # per tutti i tensori usati nella libreria
-        if not device:
-            match(data.__class__):
-                case np.ndarray:
-                    return data.astype(DEFAULT["dtype"], copy=False), np
-                case cp.ndarray:
-                    return data.astype( DEFAULT["dtype"], copy=False), cp
-                case Self.__class__:
-                    warnings.warn(
-                        "ATTENZIONE! Stai castando a tensor dei dati che sono già tensor!"
-                        "In questo modo perderai i valori degli altri attributi."
-                        "Usa il metodo SOOOS se vuoi clonare/copiare il tensor (.copy().detach())"
-                        )
-                    return data.data, data._device
-                case _:
-                    # data type non riconosciuto e non è specificato un device
-                    # (questo codice non e' runnato durante il training)
-                    if DEFAULT["device"] == "cpu":
-                        return np.array(data, DEFAULT["dtype"]), np
-                    else:
-                        return cp.array(data, DEFAULT["dtype"]), cp
-        # questi casi si verificheranno solo per i tensori senza parent (fondatori)
-        # di conseguenza, è codice che non viene eseguito durante i training
-        else:
-            match(device):
-                case "cuda":
-                    return cp.array(data, DEFAULT["dtype"]), cp
-                case"cpu":
-                    return np.array(data, DEFAULT["dtype"]), np
-                case _:
-                    ValueError(
-                        f"Expected None, 'cuda' or 'cpu', got {device} instead."
-                        )
 
     # ===== PROPERTIES =====
 
-    # NOTE: property, getter e setter causano un "rallentamento" incredibilmente
-    # trascurabile, sull'ordine dei 1*10^-5 e 1*10^-6 secondi in r/w in totale...
     # NOTE: se rendi property anche grad puoi fare stampare l'alert quando
     # cerchi di leggere il grad di un leaf tensor (che logicamente è None)
     # ed evitarti infartini nel debugging
@@ -186,6 +142,24 @@ class Tensor:
         """
         return self._grad_fn
     
+    @property
+    def grad(self) -> bool:
+        """Property created to alert the user when he tries to read
+        the grad of a leaf tensor, which is None because it's not
+        calculated."""
+        if not self.is_leaf:
+            warnings.warn("you are trying to read the gradient of a not leaf tensor, "
+                          "but, by default, is not calculated. Call .retain_grad() "
+                          "(stocazzo, non l'ho ancora implementato) if you want "
+                          "to have it.")
+        return self._grad
+    
+    @property
+    def dtype(self) -> bool:
+        """Sos"""
+        return self.data.dtype
+    
+
     # definisco i setter
     @requires_grad.setter
     def requires_grad(self, value: bool) -> None:
@@ -223,13 +197,88 @@ class Tensor:
                     "con un valore non nullo, ma questo romperebbe la backpropagation."
                     )
         self._grad_fn = value
-    
-    # ===== BASE FUNCTION =====
 
-    def expand(self, *shape) -> Self:
+    @grad.setter
+    def grad(self, value) -> None:
+        self._grad = value
+
+    @dtype.setter
+    def dtype(self, value) -> None:
+        # impedisco di cambiare la flag
+        raise AttributeError ("attribute 'dtype' of Tensor object is not writable.")
+    
+
+    # ===== BASE FUNCTIONS =====
+
+    # questa funzione non e' chiamata nel training
+    def to(self, *args):
+        match args:
+            # inserito solo il device
+            case (str(),):
+                self.data, self._device = self._manage_data(self.data, device=args[0])
+            # unico caso di doppio input supportato da torch
+            # device e dtype
+            case (str(), np.dtype):
+                self.data, self._device = self._manage_data(self.data, args[0], args[1])
+            # solo dtype
+            case (np.dtype,):
+                self.data = self._to_dtype(self.data, args[0])
+            case _:
+                print('no match')
+        # per match dell'API di Torch
+        return self
+    
+
+    def _manage_data(self, data, device=None, dtype=None):
+        if device is None:
+            device = DEFAULT["device"]
+        data, device = self._to_device(data, device)
+
+        # di default, numpy produrra' sempre operazioni con tipo
+        # di dato a 8 byte, quindi devo ricastarli.
+        # Con il nuovo approccio, mantengo il tipo dell'operazione,
+        # evitando di castare int a float o fare cose strane
+        if dtype is None:
+            dtype = dtype_map[get_type(data)][DEFAULT["precision"]]
+        return self._to_dtype(data, dtype), device
+
+
+    @staticmethod
+    def _to_device(data, device: str):
+        match(device):
+            case "cuda":
+                if data.__class__ != cp.ndarray:
+                    data = cp.array(data)
+                module = cp
+                    
+            case "cpu":
+                # controllo se e' un CuPy perche' devo usare .get()
+                # condizione non eseguita durante il training
+                if data.__class__ == cp.ndarray:
+                    data = np.array(data.get())
+                elif data.__class__ != np.ndarray:
+                    data = np.array(data)
+                module = np
+                
+            case _:
+                # questo caso non dovrebbe mai verificarsi a meno
+                # che l'utente non setta un device di default
+                # che non e' accettabile
+                raise ValueError(
+                    f"Expected 'cuda' or 'cpu', got {device} instead."
+                    )
+        return data, module
+
+                
+    @staticmethod
+    def _to_dtype(data: np.ndarray|cp.ndarray, dtype: np.dtype):
+        return data.astype(dtype, copy=False)
+
+
+    def expand(self, *shape) -> 'Tensor':
         '''
         Returns self with values copied in the new dim.
-
+        
         Example:
         [1,2,3] -> broadcast_to([2,3]) -> [[1,2,3],[1,2,3]]
         '''
@@ -237,7 +286,7 @@ class Tensor:
         # non so che pesci prendere per la backward
         raise RuntimeError("Hai chiamato una funzione in beta.")
 
-    def unsqueeze(self, dim: int) -> Self:
+    def unsqueeze(self, dim: int) -> 'Tensor':
         '''
         Insert a new dimension in the given dim.
 
@@ -252,7 +301,7 @@ class Tensor:
             output.grad_fn = back_op.UnsqueezeBackward(self, dim)
         return output
 
-    def view(self, *shape) -> Self:
+    def view(self, *shape) -> 'Tensor':
         '''
         Returns self with data rearranged to match the given shape.
         The desired shape has to have the same size (n of total elem)
@@ -264,14 +313,14 @@ class Tensor:
             output.grad_fn = back_op.ViewBackward(self)
         return output
     
-    def transpose(self, dim1: int, dim2: int) -> Self:
+    def transpose(self, dim1: int, dim2: int) -> 'Tensor':
         output = Tensor(self.data.transpose(dim1, dim2))
         
         if self.requires_grad:
             output.grad_fn = back_op.TransposeBackward(self, dim1, dim2)
         return output
     
-    def contiguous(self) -> Self:
+    def contiguous(self) -> 'Tensor':
         '''
         Riarrangia i dati in memoria. Questa operazione NON richiede backward.
         '''
@@ -280,23 +329,6 @@ class Tensor:
         if self.grad_fn is not None:
             output.grad_fn = self.grad_fn
         return output
-
-    def to(self, device: str) -> None:
-        # il dtype e' trasferito corettamente in autonomia
-        # dalle librerie
-        match(device):
-            case "cuda":
-                if self.device != "cuda":
-                    self.data = cp.array(self.data)
-                    self._device = cp
-            case "cpu":
-                if self.device != "cpu":
-                    self.data = np.array(self.data.get())
-                    self._device = np
-            case _:
-                ValueError(
-                    f"Expected 'cuda' or 'cpu', got {device} instead."
-                    )
     
     def shape(self) -> tuple[int, int]:
         # (row, column)
@@ -313,7 +345,7 @@ class Tensor:
         else:
             self._device.size(self.data, axis=dim)
     
-    def backward(self, gradient: Self=None) -> None:
+    def backward(self, gradient: 'Tensor'=None) -> None:
         '''
         gradient: array-like richiesto se self.data non è uno scalare (cioè size != 1).
 
@@ -325,7 +357,7 @@ class Tensor:
         non si lavori con retain_graph o create_graph, che non ho implementato :) .
         '''
         if gradient is not None and gradient.__class__ is not Tensor:
-            ValueError(
+            raise ValueError(
                 f"Gradient has to be Tensor or None, received {type(gradient)} instead."
             )
 
@@ -333,12 +365,12 @@ class Tensor:
             # se l'utente passa un gradient
             if gradient is not None:
                 if gradient.device != self.device:
-                    RuntimeError(
+                    raise RuntimeError(
                         f"gradient has to be on the same device as receiving tensor ({self.device},"
                         f"got {gradient.device} instead.)"
                     )
                 if self.data.shape != gradient.data.shape:
-                    RuntimeError(
+                    raise RuntimeError(
                         f"need gradient of shape {self.data.shape}, got {gradient.data.shape} instead."
                     )
                 
@@ -346,7 +378,7 @@ class Tensor:
 
             elif self.data.size == 1:
                 # => posso calcolarlo implicitamente
-                self.grad_fn(Tensor(1., device=self.device).data)
+                self.grad_fn(Tensor(1).data)
             else:
                 raise RuntimeError(
                     f"grad can be implicitly created only for scalar outputs because is not ambiguous."
@@ -372,21 +404,24 @@ class Tensor:
         # Se requires_grad=True, is_leaf e' settato a False.
         # requires_grad decide solo se salvare una backward_function e se
         # calcolare il suo gradiente.
-        # is_leaf decide solo se aggiornare il .grad del tensore o continuare
+        # is_leaf decide solo se aggiornare il ._grad del tensore o continuare
         # la backprop.
-        grad = grad.astype(DEFAULT["dtype"], copy=False)
+
+        # chiedo che grad sia dello stesso tipo di self perche' altrimenti
+        # non avrebbe senso usarelo per aggiornare self
+        grad = grad.astype(self.dtype, copy=False)
 
         if self.is_leaf:
             # aggiorno il grad e fine
 
             # caso che metto prima perche' e' il piu' frequente
-            if self.grad is not None:
-                self.grad += grad
+            if self._grad is not None:
+                self._grad += grad
             else:
                 # questo puo' essere inutile perche' dopo
                 # lo imposto a None se non e' leaf, ma cosi'
                 # mi sara' piu' facile implementare retain_grad
-                self.grad = grad
+                self._grad = grad
         else:
             # se i tensor hanno parent, continuo la backprop
 
@@ -400,7 +435,7 @@ class Tensor:
     # ===== EXPLICIT OPERATIONS =====
 
     # NOTE: non ho gestito il caso A @ x
-    def matmul(self, other: Self) -> Self:
+    def matmul(self, other: 'Tensor') -> 'Tensor':
         # self: vector, other: matrix
         output = Tensor(self.data @ other.data)
         
@@ -409,21 +444,21 @@ class Tensor:
         return output
     
     # NOTE: la backward NON supporta piu' axis!
-    def sum(self, dim=None) -> Self:
-        assert dim==None, ValueError(
-            "mi hai chiesto di fare una sum su una dimensione, ma "
-            "la mia backpropo NON supporta queta funzione."
-            )
+    def sum(self, dim: int=None, keepdim: bool=False) -> 'Tensor':
         """
         return: sum of data as scalar Tensor object
         """
-        output = Tensor(self._device.sum(self.data, axis=dim))
+        output = Tensor(self._device.sum(self.data, axis=dim, keepdims=keepdim))
 
         if self.requires_grad:
-            output.grad_fn = back_op.SumBackward(self)
+            #assert dim==None, ValueError(
+            #    "mi hai chiesto di fare una sum su una dimensione, ma "
+            #    "la mia backpropo NON supporta queta funzione."
+            #)
+            output.grad_fn = back_op.SumBackward(self, dim)
         return output
     
-    def mean(self, dim: int=None, keepdim: bool=False) -> Self:
+    def mean(self, dim: int=None, keepdim: bool=False) -> 'Tensor':
         """
         Returns the mean of all dims as scalar Tensor object if dim is None,
         else only of the selected dim.
@@ -481,28 +516,33 @@ class Tensor:
     #def __matmul__(self, other):
         #return self.matmul(other)
 
-    def __add__(self, other: Self) -> Self:
+    def __and__(self, other: 'Tensor') -> 'Tensor':
+        # Nota: questa operazione non ha backward anche in
+        # PyTorch perche' e' definita solo per gli int
+        return Tensor(self.data & other.data, dtype=self.dtype)
+
+    def __add__(self, other: 'Tensor') -> 'Tensor':
         output = Tensor(self.data + other.data)
         
         if self.requires_grad or other.requires_grad:
             output.grad_fn = back_op.AddBackward(self, other)
         return output
     
-    def __sub__(self, other: Self) -> Self:
+    def __sub__(self, other: 'Tensor') -> 'Tensor':
         output = Tensor(self.data - other.data)   
 
         if self.requires_grad or other.requires_grad:
             output.grad_fn = back_op.SubBackward(self, other)
         return output
     
-    def __mul__(self, other: Self) -> Self:
+    def __mul__(self, other: 'Tensor') -> 'Tensor':
         output = Tensor(self.data * other.data)
 
         if self.requires_grad or other.requires_grad:
             output.grad_fn = back_op.MulBackward(self, other)
         return output
     
-    def __truediv__(self, other: Self) -> Self:
+    def __truediv__(self, other: 'Tensor') -> 'Tensor':
         output = Tensor(self.data / other.data)
             
         if self.requires_grad or other.requires_grad:
@@ -510,7 +550,7 @@ class Tensor:
         return output
     
     
-    def __neg__(self) -> Self:
+    def __neg__(self) -> 'Tensor':
         # output = array * -1
         output = Tensor(-self.data)
 
@@ -519,7 +559,7 @@ class Tensor:
         return output
     
     
-    def __pow__(self, exponent: int) -> Self:
+    def __pow__(self, exponent: int) -> 'Tensor':
         output = Tensor(self._device.power(self.data, exponent))
 
         if self.requires_grad:
@@ -533,7 +573,7 @@ class Tensor:
     def __hash__(self) -> int:
         return hash(self.data) + hash(self._device) \
                 + hash(self._requires_grad) + hash(self._is_leaf) \
-                + hash(self._grad_fn) + hash(self.grad)
+                + hash(self._grad_fn) + hash(self._grad)
 
     def __eq__(self, other):
         # per confronti del tipo Tensor1 == Tensor2
@@ -560,7 +600,8 @@ class Tensor:
     def __str__(self):
         # funzione chiamata quando stampo il Tensor
         print_str = self._device.array2string(self.data, threshold=self._device.inf, max_line_width=self._device.inf, separator=',', precision=4).replace('\n', '')
-        
+        print_str = print_str.replace(',', ", ")
+
         if self.grad_fn is not None:
             print_str = print_str + f", grad_fn={self.grad_fn}"
         elif self.requires_grad:

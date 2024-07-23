@@ -5,3 +5,4 @@ from torchic.nn.initializers import naive_init, naive_init_v2, xavier_uniform, x
 from torchic.nn.loss import SELoss, CrossEntropyLoss
 from torchic.nn.layers.linears import Linear, Embedding, Dropout
 from torchic.nn.models.models import Sequential
+from torchic.nn.optim import SGD, Adam, AdamV2
