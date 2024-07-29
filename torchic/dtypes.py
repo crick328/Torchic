@@ -16,6 +16,10 @@ dtype_map = {
     'complex': {
         64: np.complex64
         #128: np.complex128,
+    },
+    'bool': {
+        32: np.int32,
+        64: np.int64,
     }
 }
 
@@ -28,3 +32,5 @@ def get_type(data: np.ndarray):
             return "float"
         case 'c':
             return "complex"
+        case 'b':
+            return "bool"

@@ -66,3 +66,11 @@ Torchic 2.x: Introduzione della property dtype per compatibilita' con PyTorch e 
             dimensioni e implementazione dei parametri "reduction", "ignore_index" e "label_smoothing".
             Introdotta (finalmente) la possibilita' di dichiarare dinamicamente il tipo dei tensori in base al tipo
             di dato che ricevono quando sono istanziati con annessa la trasmissione dinamica dei tipi tramite le operazioni.
+            Corretta l'implementazione di .transpose() che prima non era congrua al funzionamento di pytorch.
+            Ristrutturazione completa di MatmulBackward, che ora e' piu' ottimizzata, elegante e supporta i casi A@x e
+            tutti quelli con X, Y aventi dim > 2. Rework di build_graph_backward per supportare la visualizzazione lo split 
+            e la riunificazione dei rami. Rework parziale della classe Sequential (aggiunta print, miglioramento iterazione layers).
+            Aggiunto un check di verifica prima di liberare le grad_fn per supportare "l'intreccio" degli alberi di backward.
+            Aggiunta l'operazione masked_fill() con relativa backward.
+
+Transformer: Torchic 1.0 -> Torchic 2.x

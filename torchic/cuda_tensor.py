@@ -3,6 +3,8 @@ import cupy as cp
 from typing import Callable, Self
 from types import ModuleType
 import warnings
+import sys
+import time
 
 from torchic.settings import DEFAULT
 import torchic.backward as back_op
@@ -94,8 +96,6 @@ class Tensor:
             device (str, optional): can be either `"cpu"` or `"cuda"`.
                 Default is `torch.settings.DEFAULT["device"]`.
         '''
-        #self.data, self._device = self.__data_manager(data, device)
-        #self.data = self._to_dtype(data, DEFAULT['dtype'])
         self.data, self._device = self._manage_data(data, device, dtype)
         self._requires_grad = requires_grad
         self._is_leaf = True
@@ -273,6 +273,23 @@ class Tensor:
     @staticmethod
     def _to_dtype(data: np.ndarray|cp.ndarray, dtype: np.dtype):
         return data.astype(dtype, copy=False)
+    
+
+    def masked_fill(self, mask: 'Tensor', value) -> 'Tensor':
+        '''
+        Replaces self with value where mask is `true` (`mask== 0`).
+        It's useful when it's necessary to replace the values in the
+        positions marked by the mask, but, if you only need to put
+        those to zero, it's better to do `self * mask` because it's
+        faster and computationally cheaper.
+        '''
+        #if inplace:
+            #self.data[mask.data == 0] = value
+        output = Tensor(self._device.where(mask.data==0, value, self.data))
+
+        if self.requires_grad:
+            output.grad_fn = back_op.MaskedFillBackward(self, mask, output, value)
+        return output
 
 
     def expand(self, *shape) -> 'Tensor':
@@ -314,7 +331,8 @@ class Tensor:
         return output
     
     def transpose(self, dim1: int, dim2: int) -> 'Tensor':
-        output = Tensor(self.data.transpose(dim1, dim2))
+        #output = Tensor(self.data.transpose(dim1, dim2))
+        output = Tensor(self.data.swapaxes(dim1, dim2))
         
         if self.requires_grad:
             output.grad_fn = back_op.TransposeBackward(self, dim1, dim2)
@@ -397,7 +415,7 @@ class Tensor:
                 "You called .backward() two times in a row, but can't be computed again because the computational graph was freed."
                 )
 
-
+    
     def _run_backward(self, grad: np.ndarray|cp.ndarray) -> None:
         # requires_grad: attiva il sistema di tracciamento delle backward.
         # Se requires_grad=False, is_leaf puo' essere solo True.
@@ -410,6 +428,9 @@ class Tensor:
         # chiedo che grad sia dello stesso tipo di self perche' altrimenti
         # non avrebbe senso usarelo per aggiornare self
         grad = grad.astype(self.dtype, copy=False)
+        #print(f"self: {self.shape()}, {self.grad_fn}, {self.is_leaf}")
+        #time.sleep(0.5)
+        #print(self.shape())
 
         if self.is_leaf:
             # aggiorno il grad e fine
@@ -418,9 +439,6 @@ class Tensor:
             if self._grad is not None:
                 self._grad += grad
             else:
-                # questo puo' essere inutile perche' dopo
-                # lo imposto a None se non e' leaf, ma cosi'
-                # mi sara' piu' facile implementare retain_grad
                 self._grad = grad
         else:
             # se i tensor hanno parent, continuo la backprop
@@ -429,7 +447,8 @@ class Tensor:
             self.grad_fn(grad)
             # DA QUI IN POI il codice viene runnato DOPO la fine di tutte
             # le call partite da grad_fn()
-            self.grad_fn = None
+            if sys.getrefcount(self) == 2:
+                self.grad_fn = None
 
     
     # ===== EXPLICIT OPERATIONS =====
@@ -513,8 +532,8 @@ class Tensor:
     
     # ===== IMPLICIT CLASS FUNCTIONS ===== 
     
-    #def __matmul__(self, other):
-        #return self.matmul(other)
+    def __matmul__(self, other):
+        return self.matmul(other)
 
     def __and__(self, other: 'Tensor') -> 'Tensor':
         # Nota: questa operazione non ha backward anche in
@@ -571,7 +590,7 @@ class Tensor:
     # ===== CLASS UTILITY =====
 
     def __hash__(self) -> int:
-        return hash(self.data) + hash(self._device) \
+        return hash(self.data.tostring()) + hash(self._device) \
                 + hash(self._requires_grad) + hash(self._is_leaf) \
                 + hash(self._grad_fn) + hash(self._grad)
 

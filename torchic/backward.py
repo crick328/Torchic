@@ -20,27 +20,40 @@ if TYPE_CHECKING:
 
 
 class BackwardFunction:
+    '''
+    Parent class of all backward functions.
+
+    Attributes
+        `count` (int): class attributes that is used to create
+        a meaningful id to attach to the class name when printing.
+        It's very useful for debugging and economic computation-wise,
+        but it doesn't follow the PyTorch numeration system (for personal
+        preference).
+        `ctx` (tuple): 
+    '''
+    count = 0
+
     def __init__(self, *ctx: tuple) -> None:
         self.ctx = ctx
+        self.id = BackwardFunction.count
+        BackwardFunction.count += 1
 
     def next_elems(self):
+        '''
+        Allows to trace the backward graph.
+        Yields the parent tensor(s).
+        '''
         for elem in self.ctx:
             if hasattr(elem, "grad_fn"):
-                #if elem.grad_fn is not self:
                 yield elem
-                #else:
-                    # c'e' una funzione che riclica il suo output per calcolare
-                    # il grad. Tu probabilmente hai salvato il tensor dell'output,
-                    # che pero' ripunta a questa grad_fn, creando ricorsivita'
-                    # infinita. 
-                    #print(type(elem.grad_fn))
-                    #print(self.__class__)
     
     def __str__(self):
-        return self.__class__.__name__
+        return f"{self.__class__.__name__}{self.id}"
     
     def __hash__(self) -> int:
-        return hash(self.ctx) + hash(self.__class__.__name__)
+        return hash(self.ctx) + hash(self.__str__())
+    
+    
 
 
 # mettile semplicemente in ordine alfabetico
@@ -51,6 +64,7 @@ class AddBackward(BackwardFunction):
         x: "Tensor"
         y: "Tensor"
         x, y = self.ctx
+        
         cr_grad = cr_grad.reshape(x.data.shape)
 
         if x.requires_grad:
@@ -94,8 +108,42 @@ class DivBackward(BackwardFunction):
             y._run_backward(-x.data / y._device.power(y.data, 2) * cr_grad)
 
 
-class MatmulBackward(BackwardFunction):
+class EmbeddingBackward(BackwardFunction):
+    # sparse gradient
     def __call__(self, cr_grad: np.ndarray|cp.ndarray) -> None:
+        weights: "Tensor"
+        x: "Tensor"
+        weights, x = self.ctx
+        
+        if weights.requires_grad:
+            # equivalente custom di weights._run_backward()
+            cr_grad = cr_grad.astype(weights.dtype, copy=False)
+
+            if weights._grad is None:
+                weights._grad = weights._device.zeros(weights.data.shape, dtype=weights.dtype)
+            # NOTE: che differenza c'e' tra le due versioni?
+            #weights._grad[x.data] += cr_grad
+            weights._device.add.at(weights._grad, x.data, cr_grad)   
+
+        if x.requires_grad:
+            # pytorch ha della logica per x?
+            pass      
+
+
+class MaskedFillBackward(BackwardFunction):
+    def __call__(self, cr_grad: np.ndarray | cp.ndarray) -> None:
+        x: "Tensor"
+        masked: "Tensor"
+        value: int|float
+        #x, masked, value = self.ctx
+        x, mask, masked, value = self.ctx
+
+        # NOTE: where(mask) =/= where(mask==0)!
+        x._run_backward(x._device.where(mask.data, cr_grad, 0))
+
+
+class MatmulBackward(BackwardFunction):
+    def __call__(self, cr_grad: np.ndarray | cp.ndarray) -> None:
         # NOTE: l'ordine in cui si moltiplica il gradient con la derivata
         # parziale e' importante, ma non ho capito perche' cambia da self a other
         # PEP 585
@@ -103,36 +151,71 @@ class MatmulBackward(BackwardFunction):
         y: "Tensor"
         x, y = self.ctx
 
-        # NOTE possibile miglioria: inserire le ndim invariabili locali temporanee
+        #print(f"SONO IO: {self.__str__()}")
+        
+        if x.requires_grad:
+            if y.data.ndim > 1:
+                # caso X @ Y (operazione tra le ultime due dims)
+                # d/dX = Y.T;   dL/dX = crt @ Y.T
+                x._run_backward(cr_grad @ y.data.swapaxes(-1, -2))
+            else:
+                # caso X @ y
+                # d/dX = y.T;   dL/dX = crt ⊗ y.T
+                x._run_backward(x._device.outer(cr_grad, y.data.T))
 
-        # x @ A
-        if x.data.ndim == 1 and y.data.ndim == 2:
-            if x.requires_grad:
-                # d/dx = A.T;   dL/dx = crt @ A.T
-                x._run_backward(cr_grad @ y.data.T)
-            if y.requires_grad:
-                # d/dA = x.T;   dL/dA = x.T ⊗ crt
+        if y.requires_grad:
+            if x.data.ndim > 1:
+                # caso X @ Y (operazione tra le ultime due dims)
+                # d/dY = X.T;   dL/dY = X.T @ crt
+                y._run_backward(x.data.swapaxes(-1, -2) @ cr_grad)
+            else:
+                # caso x @ Y
+                # d/dY = x.T;   dL/dY = x.T ⊗ crt
                 y._run_backward(y._device.outer(x.data.T, cr_grad))
 
-        # A @ B
-        elif x.data.ndim == y.data.ndim == 2:
-            if x.requires_grad:
-                # d/dA = (A @ B)' = (A)' @ B = B.T = d/dx
-                # dL/dA = crt @ B.T
-                x._run_backward(cr_grad @ y.data.T)
-            if y.requires_grad:
-                # d/dB  = (A @ B)' = A @ (B)' = A.T
-                # dL/dB  = A.T @ crt
-                y._run_backward(x.data.T @ cr_grad)
-        # A @ x oppure matmul con dim >= 3
-        else:
-            raise NotImplementedError(
-                'Per ora hai definito la matmul backward nel caso vettore @ matrice '
-                'e matrice @ matrice, ma l\'operazione che stai facendo '
-                'non rientra in questa casistica. '
-                f'dim self={x.data.ndim}, dim other={y.data.ndim}'
-            )
+
+class __MatmulBackward(BackwardFunction):
+    def __call__(self, cr_grad: np.ndarray|cp.ndarray) -> None:
+        # NOTE: l'ordine in cui si moltiplica il gradient con la derivata
+        # parziale e' importante, ma non ho capito perche' cambia da self a other
+        # PEP 585
+        x: "Tensor"
+        y: "Tensor"
+        x, y = self.ctx
         
+
+        match([x.data.ndim, y.data.ndim]):
+            # x @ A
+            #if x.data.ndim == 1 and y.data.ndim == 2:
+            case [1, 2]:
+                if x.requires_grad:
+                    # d/dx = A.T;   dL/dx = crt @ A.T
+                    x._run_backward(cr_grad @ y.data.T)
+                if y.requires_grad:
+                    # d/dA = x.T;   dL/dA = x.T ⊗ crt
+                    y._run_backward(y._device.outer(x.data.T, cr_grad))
+
+            # A @ B
+            #elif x.data.ndim == y.data.ndim == 2:
+            case [2, 2]:
+                if x.requires_grad:
+                    # d/dA = (A @ B)' = (A)' @ B = B.T = d/dx
+                    # dL/dA = crt @ B.T
+                    x._run_backward(cr_grad @ y.data.T)
+                if y.requires_grad:
+                    # d/dB  = (A @ B)' = A @ (B)' = A.T
+                    # dL/dB  = A.T @ crt
+                    y._run_backward(x.data.T @ cr_grad)
+            # A @ x oppure matmul con dim >= 3
+            #else:
+            case _:
+                raise NotImplementedError(
+                    'Per ora hai definito la matmul backward nel caso vettore @ matrice '
+                    'e matrice @ matrice, ma l\'operazione che stai facendo '
+                    'non rientra in questa casistica. '
+                    f'dim self={x.data.ndim}, dim other={y.data.ndim}'
+                )  
+
 
 class MeanBackward(BackwardFunction):
     def __call__(self, cr_grad: np.ndarray|cp.ndarray) -> None:
@@ -147,8 +230,11 @@ class MeanBackward(BackwardFunction):
         dim: int
         x, dim = self.ctx
 
-        if dim is not None:
-            cr_grad = x._device.expand_dims(cr_grad, dim)
+        
+        # NOTE: con questo non funziona il transformer...
+        # Che abbia fatto male i test di mean()?
+        #if dim is not None:
+            #cr_grad = x._device.expand_dims(cr_grad, dim)
         cr_grad = x._device.broadcast_to(cr_grad, x.data.shape)
 
         # d/dx( (x + y + ... + z) / N) = 1/N * [d/dx(x) + d/dx(y) + ... + d/dx(z)]
@@ -290,7 +376,8 @@ class TransposeBackward(BackwardFunction):
         x, dim1, dim2 = self.ctx
 
         # rifaccio la trasposta al contrario
-        x._run_backward(cr_grad.transpose(dim2, dim1))
+        #x._run_backward(cr_grad.transpose(dim2, dim1))
+        x._run_backward(cr_grad.swapaxes(dim2, dim1))
 
 
 class UnsqueezeBackward(BackwardFunction):

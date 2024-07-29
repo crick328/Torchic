@@ -21,18 +21,22 @@ class Sequential:
     def __init__(self, *args):
         for i, element in enumerate(args):
             self.__dict__[f"{element.__class__.__name__.lower()}{i}"] = element
-
+    
+    def __iter__(self):
+        for layer in self.__dict__.values():
+            yield layer
+    
     def forward(self, x: Tensor) -> Tensor:
-        for key in self.__dict__:
-            x = self.__dict__[key](x)
-        return x 
+        for layer in self:
+            x = layer(x)
+        return x
     
     def to(self, device: str) -> None:
-        for elem in self.__dict__.values():
-            if isinstance(elem, Linear):
-                elem.weights.to(device)
-                if elem.has_bias:
-                    elem.bias.to(device)
+        for layer in self:
+            if isinstance(layer, Linear):
+                layer.weights.to(device)
+                if layer.has_bias:
+                    layer.bias.to(device)
 
     def parameters(self) -> list[Tensor]:
         """
@@ -40,23 +44,23 @@ class Sequential:
         """
         params = []
 
-        for elem in self.__dict__.values():
-            if isinstance(elem, Linear):
-                if elem.weights.requires_grad:
-                    params.append(elem.weights)
+        for layer in self:
+            if isinstance(layer, Linear):
+                if layer.weights.requires_grad:
+                    params.append(layer.weights)
 
-                if elem.has_bias and elem.bias.requires_grad:
-                    params.append(elem.bias)
+                if layer.has_bias and layer.bias.requires_grad:
+                    params.append(layer.bias)
         return params
 
     def number_of_params(self, learnable_only=False) -> int:
         number_of_params = 0
 
-        for elem in self.__dict__.values():
-            if isinstance(elem, Linear):
-                number_of_params += elem.weights.data.size
-                if elem.has_bias:
-                    number_of_params += elem.bias.data.size
+        for layer in self:
+            if isinstance(layer, Linear):
+                number_of_params += layer.weights.data.size
+                if layer.has_bias:
+                    number_of_params += layer.bias.data.size
         return number_of_params
     
 
@@ -66,34 +70,43 @@ class Sequential:
         '''
         params_dict = {}
 
-        for name, elem in self.__dict__.items():
-            if isinstance(elem, Linear):
-                if elem.weights.requires_grad:
-                    params_dict[f"{name}.weights"] = elem.weights.data
-                if elem.has_bias and elem.bias.requires_grad:
-                    params_dict[f"{name}.bias"] = elem.bias.data
+        for name, layer in self.__dict__.items():
+            if isinstance(layer, Linear):
+                if layer.weights.requires_grad:
+                    params_dict[f"{name}.weights"] = layer.weights.data
+                if layer.has_bias and layer.bias.requires_grad:
+                    params_dict[f"{name}.bias"] = layer.bias.data
         
         return params_dict
     
     
     def __str__(self):
         '''
-        versione di pytorch:
+        Print d'esempio (uguale a PyTorch):
         Sequential(
-            (0): Linear(in_features=10, out_features=10, bias=True)
-            (1): ReLU()
-            (2): Linear(in_features=10, out_features=20, bias=True)
-            (3): Softmax(dim=1)
+                (0): Linear(n_input=784, n_output=500, bias=True),
+                (1): ReLU(),
+                (2): Linear(n_input=500, n_output=250, bias=True),
+                (3): ReLU(),
+                (4): Linear(n_input=250, n_output=100, bias=True),
+                (5): ReLU(),
+                (6): Linear(n_input=100, n_output=10, bias=True),
+                (7): Softmax(dim=0),
         )
         '''
-        return "Non hai messo una print string per Sequential... Never gonna give you up!"
+        output = "Sequential(\n"
+        counter = 0
+        for layer in self:
+            output = output + f"\t({counter}): {layer},\n"
+            counter += 1
+        return output + ")"
 
     
     # chiamato in save_model() nei metadata
     def __repr__(self):
         output = "nn.Sequential(\n"
-        for elem in self.__dict__.values():
-            output = output + f"\tnn.{repr(elem)},\n"
+        for layer in self:
+            output = output + f"\tnn.{repr(layer)},\n"
         return output + ")"
 
     def __call__(self, x) -> Tensor:

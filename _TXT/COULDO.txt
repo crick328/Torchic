@@ -35,6 +35,49 @@ bisogna creare la modalita' di train ed eval nei modelli (model.train(), model.e
 
 testa se .to() funziona ancora bene con i nuovi aggiornamenti
 
+(transformers) Fare in modo che il codice giri su device
+
+(transformers) Aggiustare tutti i cast stupidi a Tensor
+
+Integrare logica per salvare e caricare il modello x checkpoint
+
+(transformers) Ottimizzare
+
+Commenta bene tutto il transformer e spamma di docstring
+
+Sfruttare l'ereditarieta' dove e' necessario e aggiornare al nuovo paradgima di
+backwards (activation functions, layers)
+
+crea funzioni di utility di library che restituiscono direttamente
+tensori (ones, zeros, where, ecc.)
+
+(transformer) verifica che tutti i forward siano backward ready
+
+agiustare draw_graph per fare in modo che funzioni con modelli complessi
+che hanno altre classi come attributo (qua ti servira' tanto l'ereditarieta' credo)
+
+scrivere bene e commentare tutto il codice di graphs.py
+
+adattati di piu' alla nomenclatura di torch (ad esempio con shape)
+
+
++ copia nomenclatura Jamil per gli args
++ rendi più facile l'accesso ai Layer by position
++ aggiungi supporto al print e al repr ai layer del Transformer (ad alcuni
+  basterà l'ereditarietà)
++ aggiungi supporto per load e unload (e mettiti buona la funzione scritta da gpt) 
++ raggruppa le magic functions
++ classe "Layer" e "Block"?
++ ci vuole una classe wrapper che implementi zero_grad, parameters e tutte le
+  funzioni del genere
+
+La cosa migliore sarebbe fermarsi un attimo, aggiustare la struttura del codice,
+aggiornare il tool per printare il grafo e vedere che struttura ha.
+
+Quindi, verifica se è necessario mettere la backward per le mask e poi l'obiettivo
+è stampare il grafo di backward del Transformer. Vai chill, scrivo codice elegante,
+pulito e soddisfacente 
+
 
 
 LIBRERIE

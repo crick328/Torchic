@@ -1,6 +1,6 @@
 import random
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.0")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.1")
 from torchic import Tensor
 from torchic.tools.helper import cat
 
@@ -71,17 +71,22 @@ class DataLoader:
     '''
     @staticmethod
     def merge_dicts(dict_list):
+        
+        # NOTE: il dtype dovrebbe essere ereditato dinamicamente, anche se
+        # e' forzato a 32 bit. CI vorrebbe una flag che permette di annullare
+        # il casting. Il device invece non viene passato
 
         # Estrarre e concatenare i tensori
-        merged_encoder_input = cat([d['encoder_input'] for d in dict_list])
-        merged_decoder_input = cat([d['decoder_input'] for d in dict_list])
-        merged_encoder_mask = cat([d['encoder_mask'] for d in dict_list])
-        merged_decoder_mask = cat([d['decoder_mask'] for d in dict_list])
-        merged_label = cat([d['label'] for d in dict_list])
+        merged_encoder_input = Tensor([ d['encoder_input'] for d in dict_list ])
+        merged_decoder_input = Tensor([ d['decoder_input'] for d in dict_list ])
+        merged_encoder_mask = Tensor([ d['encoder_mask'] for d in dict_list ])
+        merged_decoder_mask = Tensor([ d['decoder_mask'] for d in dict_list ])
+        print(f"AAAA :{Tensor([ d['label'] for d in dict_list ]).shape()}")
+        merged_label = Tensor([ d['label'] for d in dict_list ])
         
         # Gestire le stringhe
-        merged_src_text = [d['src_text'] for d in dict_list]
-        merged_trg_text = [d['trg_text'] for d in dict_list]
+        merged_src_text = [ d['src_text'] for d in dict_list ]
+        merged_trg_text = [ d['trg_text'] for d in dict_list ]
 
         # Creare il dizionario unito
         return {
@@ -103,6 +108,6 @@ class DataLoader:
         
         for i in range(0, len(self.indices), self.batch_size):
             batch_indices = self.indices[i:i + self.batch_size]
-            #yield self.dataset.select(batch_indices)
             batch = [self.dataset[idx] for idx in batch_indices]
+            #print(len(self.merge_dicts(batch)['label']))
             yield self.merge_dicts(batch)

@@ -6,26 +6,36 @@ from graphviz import Digraph
 # ogni nodo e' un tensore. Se op e' settata, e' un tensore leaf.
 # Se backward e' True, e' un tensore frutto di una backward
 class Node:
-    def __init__(self, name, shape=None, op=None, backward=False) -> None:
+    def __init__(self, name, shape=None, op=None, backward=False, next_functions=None) -> None:
         self.name = name
         self.shape = shape
         self.op = op
         self.backward = backward
+        self.next_functions = next_functions
 
-    # fondamentale per il set, altrimenti li reinserisce
-    def __hash__(self) -> int:
-        output = 0
-        for value in self.__dict__.values():
-            output += hash(value)
-        return output
+    def __eq__(self, other):
+        if isinstance(other, Node):
+            return (self.name == other.name and
+                    self.shape == other.shape and
+                    self.op == other.op and
+                    self.backward == other.backward)
+        return False
+
+    def __hash__(self):
+        return hash((self.name, self.shape, self.op, self.backward))
+    
+    
 
 
 
 def build_fw_graph(model):
-    nodes, forward_edges = [], set()
-    prec_forward = Node(name="Input",
-                        shape=list(model.__dict__.values())[0].weights.shape()[0])
-    nodes.append(prec_forward)
+    nodes, forward_edges = set(), set()
+    prec_forward = Node(
+            name="Input",
+            shape=model[0].weights.shape()[0]
+        )
+                        #shape=list(model.__dict__.values())[0].weights.shape()[0])
+    nodes.add(prec_forward)
 
     #https://youtu.be/MswxJw-8PvE?feature=shared&t=425
     
@@ -40,8 +50,8 @@ def build_fw_graph(model):
                     shape=elem.weights.shape()[1],
                     op="matmul",
                 )
-            nodes.append(weights_node)
-            nodes.append(matmul_node)
+            nodes.add(weights_node)
+            nodes.add(matmul_node)
 
             forward_edges.add((prec_forward, matmul_node))
             forward_edges.add((weights_node, matmul_node))
@@ -56,8 +66,8 @@ def build_fw_graph(model):
                     shape=elem.bias.shape(),
                     op="add",
                 )
-                nodes.append(bias_node)
-                nodes.append(add_node)
+                nodes.add(bias_node)
+                nodes.add(add_node)
 
                 forward_edges.add((prec_forward, add_node))
                 forward_edges.add((bias_node, add_node))
@@ -72,7 +82,7 @@ def build_fw_graph(model):
                 op=name,
             )
             #if node not in nodes:
-            nodes.append(node)
+            nodes.add(node)
             forward_edges.add((prec_forward, node))
             prec_forward=node
 
@@ -80,17 +90,32 @@ def build_fw_graph(model):
 
 
 def build_bw_graph(tensor):
-    nodes, edges = [], set()
+    nodes, edges = set(), set()
+    acc_grad_counter = 0
 
     def _build(tensor, prev_node=None):
-        if tensor.grad_fn not in nodes:
-            node = Node(
-                    name=f"{tensor.grad_fn.__class__.__name__} Grad",
+        # NOTE: molto brutto!
+        # Riferisce alla variabile acc_grad_counter definita nella funzione esterna
+        nonlocal acc_grad_counter
+        f_string = "[ <BR/>"
+
+        for elem in tensor.grad_fn.next_elems():
+            f_string += f"{elem.grad_fn}<BR/>"
+        #print(e1.grad_fn, e2.grad_fn)
+        #next_fn = list(e.grad_fn for e in tensor.grad_fn.next_elems())
+        #print(nf for nf in next_fn)
+        node = Node(
+                    name=f"{tensor.grad_fn.__str__()} Grad",
                     shape=tensor.data.shape,
-                    op=f"{tensor.grad_fn.__class__.__name__}",
-                    backward=True
+                    op=f"{tensor.grad_fn.__str__()}",
+                    backward=True,
+                    next_functions=f"{f_string} ]"#f"{e1.grad_fn}, {e2.grad_fn}"
                 )
-            nodes.append(node)
+        #print(f"{node.name}, {node not in nodes}, {hash(node)}")
+
+        if node not in nodes:
+            nodes.add(node)
+
             if prev_node:
                 edges.add((prev_node, node))
 
@@ -99,31 +124,43 @@ def build_bw_graph(tensor):
                     _build(next_tensor, node)
                 else:
                     acc_grad = Node(
-                            name=f"Accumulate Grad",
+                        # assegno un counter o altrimenti avrebbero lo stesso
+                        # hash e non sarebbe aggiunto a nodes
+                            name=f"AccumulateGrad{acc_grad_counter}",
                             shape=next_tensor.data.shape,
                             op=None,
                             backward=True
                         )
-                    nodes.append(acc_grad)
+                    acc_grad_counter += 1
+                    nodes.add(acc_grad)
                     edges.add((node, acc_grad))
+        # se il nodo e' gia' nel set ma ha altre connessioni
+        elif prev_node:
+            # prendo la sua occorrenza nel set
+            for n in nodes:
+                if n == node:
+                    # aggiungo la/le connessioni
+                    edges.add((prev_node, n))
     _build(tensor)
 
     return nodes, edges
 
 
 # https://graphviz.org/doc/info/colors.html
-def draw_graph(model, root_tensor=None, format='png', rankdir='TB'):
+def draw_graph(model=None, root_tensor=None, format='png', rankdir='TB'):
     # se il modello ha fatto un forward, plotta anche il grafo di backward
     assert rankdir in ['LR', 'TB']
 
     dot = Digraph(format=format, graph_attr={'rankdir': rankdir})
-    nodes, edges = build_fw_graph(model)
+    if model:
+        nodes, edges = build_fw_graph(model)
+    else:
+        nodes, edges = set(), set()
 
     if root_tensor and root_tensor.grad_fn is not None:
         bw_nodes, bw_edges = build_bw_graph(root_tensor)
-        bw_nodes.reverse()
         
-        nodes.extend(bw_nodes)
+        nodes.update(bw_nodes)
         #for edge in bw_edges:
             #edges.add(edge)
     
@@ -162,10 +199,14 @@ def draw_graph(model, root_tensor=None, format='png', rankdir='TB'):
 
 
 def create_label(data: list[str]):
-    output = f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0"><TR><TD>{data[0]}</TD></TR><TR><TD><TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white" COLOR="gray">'
+    output = f'<<TABLE ALIGN="LEFT" BORDER="0" CELLBORDER="0" CELLSPACING="0"><TR><TD ALIGN="LEFT">{data[0]}</TD></TR><TR><TD><TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="white" COLOR="gray">'
+
+    # se non ha next_functions, non metterle nemmeno
+    #if data[-1] == "next_functions: None":
+        #data = data[:-1]
 
     for line in data[1:]:
-        output = output + f"<TR><TD>{line}</TD></TR>"
+        output = output + f"<TR><TD ALIGN='LEFT'>{line}</TD></TR>"
     return output + "</TABLE></TD></TR></TABLE>>"
 
 

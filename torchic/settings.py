@@ -1,12 +1,10 @@
-from numpy import dtype, float32
-from torchic.dtypes import dtype_map
+from numpy import dtype
 import warnings
 
 
 DEFAULT = {
     "device": "cpu",
     "precision": 32,
-    #"dtype": float32,      # inizializzazione iniziale
     "img_dir": "images",
 }
 

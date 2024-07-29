@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.0")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.1")
 from torchic import nn
 from torchic.datasets.my_mnist import AutoMnist
 from torchic.tools import training
@@ -7,6 +7,11 @@ from torchic.tools.visualization import show
 import time
 import random
 import torchic
+
+
+#emb = nn.Embedding(20,10)
+#print(emb.__slots__)
+#print(emb.__dict__)
 
 
 # https://ml4a.github.io/ml4a/looking_inside_neural_nets/
@@ -82,6 +87,7 @@ optimizer = nn.optim.SGD(model.parameters(), lr=0.01)
 #optimizer = nn.optim.AdamV3(model.parameters(), lr=0.01)
 N_BATCH = int(total_train_samples/BATCH_SIZE)
 
+print(model)
 
 if PROFILER:
     import cProfile, pstats
