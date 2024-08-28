@@ -43,8 +43,8 @@ def set_default_precision(precision: int) -> None:
             f"received {precision} instead."
         )
 
-def set_default_dtype(type: dtype) -> None:
-    DEFAULT["dtype"] = type
+#def set_default_dtype(type: dtype) -> None:
+    #DEFAULT["dtype"] = type
 
 def set_default_img_dir(dir: str) -> None:
     DEFAULT["img_dir"] = dir

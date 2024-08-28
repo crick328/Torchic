@@ -1,6 +1,6 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.0")
-from torchic.datasets.my_mnist import mnist
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
+from torchic.datasets.my_mnist import AutoMnist
 import time
 import random
 from torch import nn, optim, tensor
@@ -18,11 +18,11 @@ BATCH_SIZE = 300
 # 3.19 minuti con Adam w cuda e profiler
 
 
-train_images = mnist.train_images(preprocess=True)
-train_labels = mnist.train_labels(one_hot_encode=True)
+train_images = AutoMnist.train_images(preprocess=True)
+train_labels = AutoMnist.train_labels(one_hot_encode=True)
 
-test_images = mnist.test_images(preprocess=True)
-test_labels = mnist.test_labels(one_hot_encode=True)
+test_images = AutoMnist.test_images(preprocess=True)
+test_labels = AutoMnist.test_labels(one_hot_encode=True)
 
 total_train_samples = len(train_images)
 total_test_samples = len(test_images)
@@ -49,6 +49,7 @@ model = nn.Sequential(
     nn.Softmax(0)
 )
 print(model.parameters())
+print(nn.Linear(height*width, 500))
 
 model.to(DEVICE)
 loss_fn = nn.MSELoss()

@@ -1,28 +1,6 @@
 import random
-import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.1")
-from torchic import Tensor
-from torchic.tools.helper import cat
-
-
-class _Dataset:
-    r"""An abstract class representing a :class:`Dataset`.
-
-    All datasets that represent a map from keys to data samples should subclass
-    it. All subclasses should overwrite`__getitem__` and `__len__`
-    """
-    def __init__(self, dataset) -> None:
-        # dataset puo' essere una lista di liste, di dizionari, np array, ecc.
-        # Per questo e' necessario definire il comportamento di __getitem__
-        self.dataset = dataset
-
-    def __getitem__(self, index):
-        raise NotImplementedError("Subclasses of Dataset should implement __getitem__.")
-    
-    def __len__(self):
-        # non sempre funziona, dipende dal tipo di self.dataset. In caso
-        # e' da overridare
-        return len(self.data)
+from torchic.cuda_tensor import Tensor
+from torchic.tools.helpers import cat, stack
 
 
 
@@ -36,11 +14,6 @@ class Dataset:
     def __getitem__(self, index):
         #return self.dataset[idx]
         raise NotImplementedError("Subclasses of Dataset should implement __getitem__.")
-
-
-    #def select(self, indices: list[int]):
-        #selected_data = [self.dataset[i] for i in indices]
-        #return self.__class__(selected_data)
 
 
 class DataLoader:
@@ -57,44 +30,50 @@ class DataLoader:
         self.shuffle = shuffle
         self.indices = list(range(len(self.dataset)))
 
-    '''
-    # funzione chiamata ogni volta che viene chiesto un iteratore alla
-    # classe, come ad esempio in un for
-    def __iter__(self):
-        # devi dare qualcosa che yielda a botte di batch_size
-        i = 0
-        while i < len(self.dataset):
-            yield self.dataset[i:i + self.batch_size]
-            i += self.batch_size
-        
-        # dovrei rimescolare qua il ds?
-    '''
+
     @staticmethod
-    def merge_dicts(dict_list):
+    def stack_on_batch_dim(dict_list: list[dict[str, Tensor]]):
         
         # NOTE: il dtype dovrebbe essere ereditato dinamicamente, anche se
         # e' forzato a 32 bit. CI vorrebbe una flag che permette di annullare
         # il casting. Il device invece non viene passato
 
-        # Estrarre e concatenare i tensori
-        merged_encoder_input = Tensor([ d['encoder_input'] for d in dict_list ])
-        merged_decoder_input = Tensor([ d['decoder_input'] for d in dict_list ])
-        merged_encoder_mask = Tensor([ d['encoder_mask'] for d in dict_list ])
-        merged_decoder_mask = Tensor([ d['decoder_mask'] for d in dict_list ])
-        print(f"AAAA :{Tensor([ d['label'] for d in dict_list ]).shape()}")
-        merged_label = Tensor([ d['label'] for d in dict_list ])
-        
-        # Gestire le stringhe
-        merged_src_text = [ d['src_text'] for d in dict_list ]
-        merged_trg_text = [ d['trg_text'] for d in dict_list ]
+        # accumulo i dati sulla dimensione delle batch
+        # (seq_len) -> (batch, seq_len)
+        #merged_encoder_input = Tensor([ d['encoder_input'].data for d in dict_list ])
+        # (seq_len) -> (batch, seq_len)
+        #merged_decoder_input = Tensor([ d['decoder_input'].data for d in dict_list ])
+        # (1, 1, seq_len) -> (batch, 1, 1, seq_len)
+        #merged_encoder_mask = Tensor([ d['encoder_mask'].data for d in dict_list ])
+        # (1, seq_len, seq_len) -> (batch, 1, seq_len, seq_len)
+        #merged_decoder_mask = Tensor([ d['decoder_mask'].data for d in dict_list ])
+        # (seq_len) -> (batch, seq_len)
+        #merged_target = Tensor([ d['target'].data for d in dict_list ])
 
-        # Creare il dizionario unito
+        # estraggo i dati
+        encoder_inputs = [d['encoder_input'].data for d in dict_list]
+        decoder_inputs = [d['decoder_input'].data for d in dict_list]
+        encoder_masks = [d['encoder_mask'].data for d in dict_list]
+        decoder_masks = [d['decoder_mask'].data for d in dict_list]
+        targets = [d['target'].data for d in dict_list]
+
+        # concateno sulla prima dimensione
+        merged_encoder_input = stack(encoder_inputs)
+        merged_decoder_input = stack(decoder_inputs)
+        merged_encoder_mask = stack(encoder_masks)
+        merged_decoder_mask = stack(decoder_masks)
+        merged_target = stack(targets)
+        
+        # gestisco le frasi in chiaro
+        merged_src_text = [d['src_text'] for d in dict_list]
+        merged_trg_text = [d['trg_text'] for d in dict_list]
+
         return {
             'encoder_input': merged_encoder_input,
             'decoder_input': merged_decoder_input,
             'encoder_mask': merged_encoder_mask,
             'decoder_mask': merged_decoder_mask,
-            'label': merged_label,
+            'target': merged_target,
             'src_text': merged_src_text,
             'trg_text': merged_trg_text
         }
@@ -109,5 +88,5 @@ class DataLoader:
         for i in range(0, len(self.indices), self.batch_size):
             batch_indices = self.indices[i:i + self.batch_size]
             batch = [self.dataset[idx] for idx in batch_indices]
-            #print(len(self.merge_dicts(batch)['label']))
-            yield self.merge_dicts(batch)
+
+            yield self.stack_on_batch_dim(batch)

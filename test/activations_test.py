@@ -6,6 +6,11 @@ import torch
 from torch import tensor
 import numpy as np
 
+import tempfile
+
+temp_dir = tempfile.gettempdir()
+print(f"La cartella temporanea di sistema è: {temp_dir}")
+
 
 
 my_relu = torchic.nn.ReLU()

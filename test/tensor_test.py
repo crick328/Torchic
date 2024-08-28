@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 1.5B")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
 from torchic.cuda_tensor import Tensor
 import torch
 from torch import tensor

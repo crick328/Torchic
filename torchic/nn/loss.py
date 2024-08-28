@@ -22,15 +22,18 @@ class SELoss:
         '''
         loss = Tensor(x._device.power(x.data - target.data, 2))
         
+        '''
         def _SELoss_backward(gradient: Tensor) -> None:
             # non aggiorno il grad di loss perché la derivata di loss w.r.t. loss è 1
             x.grad_fn(2*(x.data - target.data) * gradient)
             # rilascio il grafo computazionale in modo tale che il garbage collector possa cancellare le variabili inutili
             x.grad_fn = None
+        '''
 
         # scritto per uniformità e flessibilità, si può valutare di rimuoverlo
         if x.requires_grad:
-            loss.grad_fn=_SELoss_backward
+            #loss.grad_fn=_SELoss_backward
+            loss.grad_fn = back_op.SELossBackward(x, target)
         return loss
 
 
@@ -133,9 +136,9 @@ class CrossEntropyLoss:
         #  target deve essere int e deve rappresentare le labels non ohe
         
 
-        num_classes = x.data.shape[-1]
+        #num_classes = x.data.shape[-1]
+        num_classes = x.size(-1)
         
-        #if x.data.ndim == 1:
         if x.data.ndim == target.data.ndim:
             # Questo funziona per prediction 1D
             smoothed_targets = Tensor(target.data * (1 - self.label_smoothing) + self.label_smoothing / num_classes)
@@ -162,7 +165,7 @@ class CrossEntropyLoss:
             loss *= mask
         
 
-        match(self.reduction):
+        match self.reduction:
             case "none":
                 pass
             case "sum":

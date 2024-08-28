@@ -1,30 +1,29 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.1")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
 from torchic import nn
 from torchic.datasets.my_mnist import AutoMnist
 from torchic.tools import training
 from torchic.tools.visualization import show
+from torchic.tools.visualization.graphs import draw_graph
 import time
 import random
 import torchic
 
 
-#emb = nn.Embedding(20,10)
-#print(emb.__slots__)
-#print(emb.__dict__)
-
-
 # https://ml4a.github.io/ml4a/looking_inside_neural_nets/
-DEVICE = "cpu"
+DEVICE = "cuda"
 PROFILER = False
 EPOCHS = 1
 BATCH_SIZE = 300
 LIB_TRAINING_LOOP=False
 
-torchic.set_default_dtype(torchic.float32)
+torchic.set_default_precision(32)
 torchic.set_default_device(DEVICE)
 
-# NOTE: sei sicuro che i grad stiano su device?
+# NOTE: IL BATCHING E' IMPLEMENTATO IN MODO NAIVE!
+# Dovresti manipolare i tensori per creare una batch dim,
+# proprio come nel transformer!
+# Magari correggi in un train_test_v2.py 
 
 
 
@@ -80,14 +79,16 @@ model = nn.Sequential(
     nn.Linear(100, 10),
     nn.Softmax(0)
 )
+#print(list(model.parameters()))
+print(model)
 
 model.to(DEVICE)
+
 loss_fn = nn.SELoss()
 optimizer = nn.optim.SGD(model.parameters(), lr=0.01)
 #optimizer = nn.optim.AdamV3(model.parameters(), lr=0.01)
 N_BATCH = int(total_train_samples/BATCH_SIZE)
 
-print(model)
 
 if PROFILER:
     import cProfile, pstats
@@ -122,6 +123,7 @@ else:
 
                 loss = loss_fn(predicted, train_labels[i])
                 loss = loss.mean()
+                #draw_graph(predicted)
                 loss.backward()
 
                 optimizer.step()

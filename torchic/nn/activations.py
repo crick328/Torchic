@@ -110,7 +110,8 @@ class LogSoftmax(ActivationFunction):
         if x.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
             # non è più considerato leaf tensor
-            softmax.grad_fn = _log_softmax_backward
+            #softmax.grad_fn = _log_softmax_backward
+            softmax.grad_fn = back_op.LogSoftmaxBackward(x, self.dim, softmax)
         return softmax
     
     def __repr__(self):

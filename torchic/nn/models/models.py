@@ -1,5 +1,7 @@
 from torchic.cuda_tensor import Tensor
 from torchic.nn.layers.linears import Linear
+from torchic.nn.module import Module
+from collections.abc import Generator
 
 # si puo' creare una classe Module nel momento in cui vedi che ci sono delle
 # cose che sono uguali per ogni classe. Ad esempio, Linear e Sequential hanno
@@ -33,37 +35,27 @@ class Sequential:
     
     def to(self, device: str) -> None:
         for layer in self:
-            if isinstance(layer, Linear):
-                layer.weights.to(device)
-                if layer.has_bias:
-                    layer.bias.to(device)
+            if isinstance(layer, Module):
+                layer.to(device)
 
-    def parameters(self) -> list[Tensor]:
+    def parameters(self):
         """
         returns all trainable tensors of the model
         """
-        params = []
 
         for layer in self:
-            if isinstance(layer, Linear):
-                if layer.weights.requires_grad:
-                    params.append(layer.weights)
+            if isinstance(layer, Module):
+                yield from layer.parameters()
 
-                if layer.has_bias and layer.bias.requires_grad:
-                    params.append(layer.bias)
-        return params
-
-    def number_of_params(self, learnable_only=False) -> int:
-        number_of_params = 0
+    def number_of_params(self, trainable_only=False) -> int:
+        n = 0
 
         for layer in self:
-            if isinstance(layer, Linear):
-                number_of_params += layer.weights.data.size
-                if layer.has_bias:
-                    number_of_params += layer.bias.data.size
-        return number_of_params
+            if isinstance(layer, Module):
+                for param in layer.parameters(trainable_only):
+                    n += param.size()
+        return n
     
-
     def state_dict(self) -> dict:
         '''
         Returns the state of the trainable params.
@@ -71,13 +63,15 @@ class Sequential:
         params_dict = {}
 
         for name, layer in self.__dict__.items():
-            if isinstance(layer, Linear):
-                if layer.weights.requires_grad:
-                    params_dict[f"{name}.weights"] = layer.weights.data
-                if layer.has_bias and layer.bias.requires_grad:
-                    params_dict[f"{name}.bias"] = layer.bias.data
+            if isinstance(layer, Module):
+                for key, value in layer.state_dict(name):
+                    params_dict[key] = value
         
         return params_dict
+    
+
+    def __getitem__(self, index):
+        return next( elem for i, elem in enumerate(self) if i == index )
     
     
     def __str__(self):

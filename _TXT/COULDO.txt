@@ -19,7 +19,8 @@ Rendi funzionante la lib anche senza import di CuPy
 
 implementa cifar-10 e fai test con e senza bias per vedere differenze
 
-Scrivi un setup.py per la libreria
+Scrivi un setup.py per la libreria in modo che worki pure su portatile senza
+problemi
 
 (futuro) Non mi dispiacerebbe provare a fare qualcosa di RL. Magari posso coddare
 l'ambiente in js o fare un minigioco con pygame
@@ -35,11 +36,7 @@ bisogna creare la modalita' di train ed eval nei modelli (model.train(), model.e
 
 testa se .to() funziona ancora bene con i nuovi aggiornamenti
 
-(transformers) Fare in modo che il codice giri su device
-
 (transformers) Aggiustare tutti i cast stupidi a Tensor
-
-Integrare logica per salvare e caricare il modello x checkpoint
 
 (transformers) Ottimizzare
 
@@ -48,36 +45,63 @@ Commenta bene tutto il transformer e spamma di docstring
 Sfruttare l'ereditarieta' dove e' necessario e aggiornare al nuovo paradgima di
 backwards (activation functions, layers)
 
-crea funzioni di utility di library che restituiscono direttamente
-tensori (ones, zeros, where, ecc.)
-
-(transformer) verifica che tutti i forward siano backward ready
-
 agiustare draw_graph per fare in modo che funzioni con modelli complessi
 che hanno altre classi come attributo (qua ti servira' tanto l'ereditarieta' credo)
+IDEA: sarebbe molto figo sfruttare il group by tirato fuori da ChatGPT per raggruppare
+i parametri di uno stesso nested Module (ad esempio raggruppare tutti i backward
+degli embedding)
 
 scrivere bene e commentare tutto il codice di graphs.py
 
 adattati di piu' alla nomenclatura di torch (ad esempio con shape)
 
+raggruppa le magic functions
 
-+ copia nomenclatura Jamil per gli args
-+ rendi più facile l'accesso ai Layer by position
-+ aggiungi supporto al print e al repr ai layer del Transformer (ad alcuni
-  basterà l'ereditarietà)
-+ aggiungi supporto per load e unload (e mettiti buona la funzione scritta da gpt) 
-+ raggruppa le magic functions
-+ classe "Layer" e "Block"?
-+ ci vuole una classe wrapper che implementi zero_grad, parameters e tutte le
-  funzioni del genere
 
-La cosa migliore sarebbe fermarsi un attimo, aggiustare la struttura del codice,
-aggiornare il tool per printare il grafo e vedere che struttura ha.
+Unisci bene tutta la parte dei dataset e cerca di creare una forma comunque
+sia a quella del transformer che al tuo di mnist
 
-Quindi, verifica se è necessario mettere la backward per le mask e poi l'obiettivo
-è stampare il grafo di backward del Transformer. Vai chill, scrivo codice elegante,
-pulito e soddisfacente 
+Il prossimo step è integrare il package Transformer nella libreria,
+rifinire il suo codice e tutto ciò che riguarda gli aggiornamenti fatti.
 
+Forse prima di tutto bisogna assicurarsi che si possa salvare e caricare
+il Transformer per poi integrare subito la logica nel training. 
+A proposito, aggiungi supporto al print e al repr ai layer del Transformer
+
+In più bisognerebbe alleggerire la backward del transformer
+
+Controlla se effettivamente si resetta il count della classe
+BackwardFunction quando riparte la backprop (c'e' un modo migliore
+per resettare?)
+
+c'e' un modo per rivedere la sintassi di _device? Non e' molto carina...
+Forse basta solo usare le nuove funzioni helper di creazione del codice?
+Quelle sono la maggior parte delle cose... Senno' bisogna wrappare le
+operazioni di tensor. Il loro body deve stare da una parte e le funct
+di Tensor le richiamano solo (occhio ai circulars import! Per sta cosa
+mi sa che quelle op devono essere dentro cuda_tensor.py...)
+Che ne dici di pu/proc_unit che sta per processing unit?
+o backend_lib
+Mi piacerebbe chiamarla ._core perche' rende l'idea di un pezzo
+fondamentale su cui si basa tutto. L'avere un nome diverso dal 
+suo getter (device) aiuta tanto a capire che succede
+
+
+bisogna pulire e rifinire i commenti nel transformer
+
+introduci cp.is_available()
+
+bisogna rivedere il modo in cui il linear prende le initialization funct
+
+Grad-CAM e saliency map (non so se sono la stessa cosa, ma sembrano simili)
+
+ci vogliono delle docstring nelle singole backward per spiegare, grossomodo,
+la matematica che c'e' dietro/ come ragiona la funzione
+
+Implementa lo stack di funzioni dei modulelist
+
+IL BATCHING E' IMPLEMENTATO IN MODO NAIVE! Dovresti manipolare i tensori per creare una
+batch dim, proprio come nel transformer! Magari correggi in un train_test_v2.py
 
 
 LIBRERIE

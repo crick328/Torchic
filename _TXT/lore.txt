@@ -1,12 +1,15 @@
 Tentativi di implementazione from scratch delle reti neruali.
+- 22/01/2023
 Replica v1: pensavo che esistesse la classe neurone. Pensavo che fosse necessario creare classi speciali per input e output layer;
 Replica v2: pensavo che i pallini dei layer fossero i weights, non sapevo come le NN fossero implementate con l'algebra
             lineare, e quindi non sapevo nemmeno di weights matrix, vectors, ecc. Una volta scoperto, pensavo che
             tutti i layer andassero in una sola matrice (la weight matrix per l'appunto). Non mi spiegavo come
             potesse esistere una matrice aventi row con size diverse, ancor meno come potesse essere moltiplicata
             per un vettore;
-Replica v3: tentato approccio alla backprop con idee di Karpathy, ma non solo mi sono reso conto di non aver capito come funziona, ma che il mio approccio
-            non riesco nemmeno a scriverlo sperimentalmente.
+07/10/2023 - 20/10/2023
+Replica v3: tentato approccio alla backprop con idee di Karpathy, ma non solo mi sono reso conto di non aver capito come funziona,
+            ma che il mio approccio non riesco nemmeno a scriverlo sperimentalmente.
+20/10/2023 - 13/12/2023
 Replica v4: ho imparato la backpropagation, rifatto tutto da zero per implementazione sintassi e logica migliore,
             però mi sono completamente bloccato nel momento in cui dovevo implementare la backprop.
             Ho provato vari approcci per venirne a capo e non sono riuscito a capire l'approccio di Karpathy.
@@ -14,16 +17,20 @@ Replica v4: ho imparato la backpropagation, rifatto tutto da zero per implementa
             Una volta tornato, sono riuscito a far funzionare la backward anche con le act_fun e ho fatto crescere la classe Tensor,
             programmando tutto senza l'uso di alcuna libreria.
             (test6.py)
+13/12/2023 - 24/12/2023
 replica v5: ho dovuto introdurre Numpy per la gestione di tutte le operazioni del tipo __operazione__ e __roperaione__. Ho scoperto che
             i gradient si sommano e che è nel mio migliore interesse non memorizzare quelli che non servono.
             Ho rivisitato il vecchio codice di LLayer e NNetwork, creato la loss, introdotto optimizers e fatto dei training di test.
             Dopo un bel po' di problemi tosti, il training finale è andato a buon fine grazie alla potenza degli init, che mi ha fatto
             capire quanto siano fondamentali.
             La sua versione finale permette di trainare, ma è ancora grezza. Ha raggiunto un 90% di test_acc su mnist 28x28.
+24/12/2023 - 27/12/2023
 replica v6: la sintassi è stata rifinita, così come gli oggetti e i relativi metodi. Ora i modelli si possono salvare e caricare
             in memoria. Le init sono state separate da tutto il resto del codice. È iniziata la sfida per velocizzare il training.
+27/12/2023 - 13/02/2024
 replica v7: ho continuato ad ottimizzare fino a scendere a 3.8 minuti di training con l'update dei params ad ogni backward (in v5 ci
             impiegavo 5.5 minuti, in v6 4.8).
+13/02/2024 - 20/04/2024
 replica v8: creati i CudaTensor. Ora è possibile trainare su GPU! Ho lavorato per renderlo "dinamico" e per non rendere ingarbugliata
             la scrittura del codice futuro:
             - sono riuscito a farli condividere lo stesso codice dalla classe Tensor della versione precedente in modo da non avere
@@ -36,8 +43,9 @@ replica v8: creati i CudaTensor. Ora è possibile trainare su GPU! Ho lavorato p
             backprop di .mean(), .__add__() e .__sub__(). Aggiunto il type hinting a tutta la libreria.
             Ho iniziato l'implementazione del Transofrmer, arrivando quasi a finire la Multi Head Attention. Ho reimplementato la softmax
             per fare in modo che funzioni su una dimensione data (la backprop è stata un casino, grazie CHADGPT).
+21/04/2024 - 01/06/2024
 torchic 1.x: refactoring della libreria e adattamento alla nomenclatura di PyTorch. Riscrittura di tutte le backward funct in un'unica
-            funzione. Aggiunto il supporto a float32 con conseguente speedup a 2.2 min su CPU (che straccia il vecchio record
+            funzione (._backward()). Aggiunto il supporto a float32 con conseguente speedup a 2.2 min su CPU (che straccia il vecchio record
             mai piu' raggiunto di 3.5 min su CPU). Aggiunto supporto a global setting per default value di device e dtype con relativo
             testing e rafforzamento del behavior per evitare tipi indesiderati/fuori controllo durante la backprop.
             Riscirttura di __device_manager(). Scrittura di alcune funzioni nuove con relative backward (view, unsqueeze, transpose, contiguous). 
@@ -61,6 +69,7 @@ Passaggio a Torchic 2.0: Ristruttura di tutto il codice di backward, che e' stat
             Riscrittura di parte del codice relativo ai grafi per supportare la visualizzazione del grafo di backward con shapes.
             Riorganizzazione directory della libreria. Aggiunto il supporto per caricamento rapido e sicuro dei modelli senza perdita
             di precisione grazie ai safetensors con relative funzioni.
+01/06/2024
 Torchic 2.x: Introduzione della property dtype per compatibilita' con PyTorch e easy of use. Correzione errore nel calcolo della
             CrossEntropyLoss, aggiornamento della sua backward function al nuovo paradgima, aggiunto supporto per piu'
             dimensioni e implementazione dei parametri "reduction", "ignore_index" e "label_smoothing".
@@ -72,5 +81,42 @@ Torchic 2.x: Introduzione della property dtype per compatibilita' con PyTorch e 
             e la riunificazione dei rami. Rework parziale della classe Sequential (aggiunta print, miglioramento iterazione layers).
             Aggiunto un check di verifica prima di liberare le grad_fn per supportare "l'intreccio" degli alberi di backward.
             Aggiunta l'operazione masked_fill() con relativa backward.
+            Introduzione di Module con relativo adattamento della logica in Sequential per supportare le nuove versioni di
+            .to(), .state_dict() e .parameters(). Module e' stata progettata per supportare Module come suoi attributi in vista
+            di alcune classi gia' implementate (ma ancora da integrare nella libreria) del Transformer. Approfittato del rework
+            di Sequential per migliorare la logica e pulire il codice. Module ha richiesto anche il rework delle funzioni
+            "sperimentali" di caricamento e salvataggio dei modelli, dove anche qui ne ho approfittato per migliorare il codice.
+            Rework del funzionamento di draw_graph() con rimozione supporto al forward pass.
+            Rework delle backward function per supporto Transformer: e' stata modificata la classe parent BackwardFunction in
+            modo da:
+            - avere un counter all'interno del print per debugging;
+            - evitare di rilasciare le funzioni di backward se sono richieste per altri calcoli;
+            - fermare la computazione del ramo di backward se altri rami convergono allo stesso nodo;
+            - accumulare il gradiente prima e chiamare la backward function dopo in caso di rami che convergono allo stesson nodo.
+            Questo e' stato realizzato tramite un ref count interno che viene dinamicamente calcolato per ogni backward function.
+            Aggiunta la funzione .sqrt() con backward. Aggiunta la funzione .exp() con backward. Corretto un problema di reshape
+            dei grad in sum, mean, var, std, in cui veniva tentato il reshape anche con la flag keepdim=True.
+            Trovato e risolto un grosso memory leak causato dalla nuova logica di rimozione delle grad_fn causato da del self.
+            Risolto un problema di mismatch di gradient con tensor 3D per add, mul e matmul. Risolto un bug che non permetteva
+            di ottenere tutti i parametri di un modulo se un suo attributo era una lista di moduli. Miglioramento della
+            logica dei dataloader.
+            Introdotto ModuleList, gradient checking e risolto un bug nella backward di div rispetto ad x che, in certe
+            circostanze, produceva gradienti nulli per cancellazione numerica nel calcolo del reciproco. Rework di load_model
+            per supportare il load di modelli con layer complessi.
+            (Il transformer finalmente traina)
 
-Transformer: Torchic 1.0 -> Torchic 2.x
+
+Transformer: Replica v8 -> Torchic 2.x. Corretti un'infinita' di bug, ha richiesto modifiche alla lib principale e tante cose.
+cose richieste dal transformer:
+- softmax multidimensionale
+- logosft con supporto multidimensionale
+- cceloss con tutti i parametri e supporto multidimensionale
+- std con supporto multidimensionale
+- var con supporto multidimensionale
+- mean multidimensionale
+- unsqueeze
+- view
+- patch memory leak
+- patch caso gradiente nullo in div baclward
+- rework per interrompere backward e accumuloare gradienti in certi nodi
+- dataloaders di merd

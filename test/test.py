@@ -6,12 +6,13 @@ import numpy as np
 import torch
 import time
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.0")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
 from torchic import Tensor
 from torchic import nn
 from torchic.tools.visualization.graphs import draw_graph
+from torchic.tools.helpers import rand
 
-
+print(rand([2,3]))
 a = [1,2,3]
 b = np.array(a, np.int64)
 # se il default della lib e' 32, voglio convertirlo

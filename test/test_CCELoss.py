@@ -1,46 +1,36 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.0")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
 
-from torchic import Tensor, int64, nn
-
+from torchic import Tensor, int64, nn, rand, randint, draw_graph
 import torch
 from torch import tensor
 from torch.nn import CrossEntropyLoss
 
 
-values = [
-    [0.2, 0.3, 0.5],  # Logits per le tre classi del primo campione
-    [0.1, 0.6, 0.3],  # Logits per le tre classi del secondo campione
-    [0.4, 0.2, 0.4]   # Logits per le tre classi del terzo campione
-]
-#values = [0.2, 0.3, 0.5]
-true_val = [2, 1, 1] # [3, 1, 1] da' giustamente errore per entrambi
-#true_val = [
-#    [0., 1., 2.],  # Logits per le tre classi del primo campione
-#    [1., 0., 0.],  # Logits per le tre classi del secondo campione
-#    [1., 2., 1.]   # Logits per le tre classi del terzo campione
-#]
-reduction = "mean"
-ignore_index = 1
-smooth=0.3
-#values = [10., 5., 3., 1., 4.]
-#true_val = [1., 0., 0., 0., 0.]
+
+REDUCTION = "mean"
+IGNORE_INDEX = 1
+SMOOTH=0.1
+INPUT_SHAPE = (20, 10)
+TARGET_SHAPE = (20, )
+DEC_VOCAB_SIZE = 5
 
 
-my_ten = Tensor(values, requires_grad=True)
-my_tar = Tensor(true_val, dtype=int64)
-my_loss = nn.CrossEntropyLoss(reduction=reduction, ignore_index=ignore_index, label_smoothing=smooth)
+my_ten = rand(INPUT_SHAPE, requires_grad=True)
+my_tar = randint(TARGET_SHAPE, high=DEC_VOCAB_SIZE)
+my_loss = nn.CrossEntropyLoss(reduction=REDUCTION, ignore_index=IGNORE_INDEX, label_smoothing=SMOOTH)
 
-tor_ten = tensor(values, requires_grad=True)
-tor_tar = tensor(true_val)
-print(tor_tar.dtype)
-torch_loss = CrossEntropyLoss(reduction=reduction, ignore_index=ignore_index, label_smoothing=smooth)
+tor_ten = tensor(my_ten.data, requires_grad=True)
+tor_tar = tensor(my_tar.data, dtype=torch.int64)
+torch_loss = CrossEntropyLoss(reduction=REDUCTION, ignore_index=IGNORE_INDEX, label_smoothing=SMOOTH)
 
 my_res = my_loss(my_ten, my_tar)
 tor_res = torch_loss(tor_ten, tor_tar)
 
-my_res.mean().backward()
-tor_res.mean().backward()
+draw_graph(my_res)
+
+my_res.backward()
+tor_res.backward()
 
 
 print(my_res)

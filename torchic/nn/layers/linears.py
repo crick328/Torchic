@@ -1,6 +1,7 @@
 from torchic.cuda_tensor import Tensor
 from torchic.backward import EmbeddingBackward
 import torchic.nn.initializers as inits
+from torchic.nn.module import Module
 
 
 # Linear Layer (corrisponde al Dense layer di Tensorflow se quest'ultimo è settato con activation=None)
@@ -12,10 +13,10 @@ import torchic.nn.initializers as inits
 # caricamenti separati e unici insieme al modello) ed e' sostanzialmente la stessa cosa.
 # O istanzi e assegni tramite args o prima istanzi e poi assegni, ma le tempistiche
 # sono quelle...
-class Linear:
+class Linear(Module):
     __slots__ = ("has_bias", "weights", "bias")
 
-    def __init__(self, n_input: int=None, n_output: int=None, bias=True, _weights=None, _bias=None, _init_funct=inits.xavier_norm):
+    def __init__(self, n_input: int=None, n_output: int=None, bias=True, _init_funct=inits.xavier_norm, **_init_kwargs):
         '''
         n_input: number of values received
         n_output: number of values returned
@@ -24,71 +25,35 @@ class Linear:
         _bias: sets the value of the bias vector. Used when loading a model and it's not intended
             for user usage.
         '''
-        self.__value_check(n_input, n_output, _weights, _bias)
+        if n_input < 1 or n_output < 1:
+            raise ValueError(
+                "n_input and n_output have to be strictly positive, received"
+                f"n_input={n_input} and n_output={n_output} instead."
+                )
 
         self.has_bias = bias
-        self.weights = _init_funct(n_input, n_output) if _weights is None else _weights
+        self.weights = _init_funct(n_input, n_output, **_init_kwargs)
         if bias:
-            self.bias = _init_funct(n_input, n_output, is_bias=True) if _bias is None else _bias
+            self.bias = _init_funct(n_input, n_output, is_bias=True, **_init_kwargs)
     
     # si potrebbe anche fare in modo che la logica sia scritta nel .forward()
     # in modo tale che si sovrascrive solo quello quando si eredita e di
     # default il __call__lo chiama (che e' cio' che hai fatto con Sequential)
     def forward(self, x: Tensor) -> Tensor:
         x = x.matmul(self.weights)
-        #e1, e2 = x.grad_fn.next_elems()
-        # e1 e' self.emb(trg), e2 e' self.weights
-        #print(f"self.: shape {e1.shape()}, grad_fn {e1.grad_fn}, rg {e1.requires_grad}, leaf {e1.is_leaf}")
-        #print(f"self.weights: shape {e2.shape()}, grad_fn {e2.grad_fn}, rg {e2.requires_grad}, leaf {e2.is_leaf}")
+        
         return x + self.bias if self.has_bias else x
     
     def __call__(self, *args, **kwargs) -> Tensor:
         return self.forward(*args, **kwargs)
-    
-    def __value_check(self, n_input=None, n_output=None, weights=None, bias=None):
-        if not weights and not bias:
-            if n_input is None or n_output is None:
-                raise ValueError("You have to pass a value for n_input and n_output.")
-            
-            if n_input < 1 or n_output < 1:
-                raise ValueError(
-                    "n_input and n_output have to be strictly positive, received"
-                    f"n_input={n_input} and n_output={n_output} instead."
-                    )
-            
-        elif weights and not bias:
-            if weights.shape()[1] != bias.shape()[0]:
-                raise RuntimeError(
-                    "Given weights and bias have mismathed shapes. "
-                    f"weights: {weights.shape()}, bias: {bias.shape()}."
-                    )
-    '''
+
+    # metodo chiamato con print()
     def __str__(self):
-        # metodo chiamato con print()
-        output = f"{self.__class__.__name__}(weights = {self.weights.shape()}"
-        if self.has_bias:
-            return output + f", bias = {self.bias.shape()})"
-        else:
-            return output + ")"
-    '''
-    def __str__(self):
-        # metodo chiamato con print()
         return self.__repr__()
 
     def __repr__(self):
         shape = self.weights.shape()
         return f"{self.__class__.__name__}(n_input={shape[0]}, n_output={shape[1]}, bias={self.has_bias})"
-        
-    def state_dict(self):
-        out_dict = {"class": self.__class__.__name__,
-                    "kwargs": {"_weights": self.weights.state_dict()}
-                    }
-        if self.has_bias:
-            out_dict["kwargs"]["has_bias"] = True
-            out_dict["kwargs"]["_bias"] = self.bias.state_dict()
-        else:
-            out_dict["kwargs"]["has_bias"] = False
-        return out_dict
         
 
 class Embedding(Linear):
@@ -121,11 +86,11 @@ class Embedding(Linear):
     '''
     # non necessario perche' utilizza quella di Linear
     # Si, usa quelli di linear, ma quindi ha slots non usati!
-    __slots__ = ("weights")
+    __slots__ = ("weights",)
 
-    def __init__(self, vocab_size: int, embedding_size: int, _weights=None):
+    def __init__(self, vocab_size: int, embedding_size: int, *args, **kwargs):
         # questa matrix pare che giovi sempre dell'init della Xavier norm
-        super().__init__(vocab_size, embedding_size, bias=False, _weights=_weights)
+        super().__init__(vocab_size, embedding_size, *args, bias=False, **kwargs)
         #self.weights = inits.xavier_norm(vocab_size, embedding_size) if _weights is None else _weights
     
     def forward(self, x: Tensor) -> Tensor:
@@ -136,16 +101,19 @@ class Embedding(Linear):
         Returns:
             Tensor of shape (N, embedding_size)
         '''
-        #return Tensor(self.weights[x._device.nonzero(x)[1][0]], requires_grad=True)
-        output = Tensor(self.weights[x.data])
+        # NOTE: sarebbe carino trovare un modo per dire che solo questa op
+        # non deve generare backward, tipo torch.no_grad()
+        output = self.weights[x.data]
 
         # x non puo' richiedere il grad perche' deve essere un intero
         if self.weights.requires_grad:
+            # rimuovo IndexBackward, che in questo caso non serve
+            output._grad_fn = None
             output.grad_fn = EmbeddingBackward(self.weights, x)
         return output
     
 
-class Dropout(Linear):
+class Dropout(Module):
     '''
     Setta a 0 randomicamente alcuni valori dell'input secondo la probabilità data in input.
     Sono attivi solo durante la fase di training (cosa che devi implementare).
