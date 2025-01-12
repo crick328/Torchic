@@ -1,9 +1,9 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
 import torchic
 from torchic import Tensor, nn, draw_graph
 from torchic.nn.models import transformer, transformer_config
-from torchic.datasets.base_classes import DataLoader
+from torchic.data.dataloaders.base_classes import DataLoader
 import numpy as np
 
 

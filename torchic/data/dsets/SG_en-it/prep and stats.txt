@@ -1,0 +1,16 @@
+
+Prep made:
+    - unique sentences with auto=True                                 (remove duplicates)
+    - merge consecutive sentences with max_words_len=150    (merge of phrases said by the same char consecutively)
+    
+Stats:
+    - EN longest sentence: 51 words:
+      She's like some kind of angel that can look beyond losses and gains. She's happy when others are happy, and sad when they're sad. Having spent so much of my life around shrewd adults, she's one of the few friends I have that I trust from the bottom of my heart.
+    - IT longest sentence: 52 words
+      È come una specie di angelo che sa guardare oltre le perdite e i guadagni. È felice quando gli altri sono felici, e triste quando sono tristi. Avendo trascorso gran parte della mia vita con adulti astuti, è una delle poche amiche che ho di cui mi fido dal profondo del cuore.
+    - EN mean sentence length: 10.322288349774636
+    - IT mean sentence length: 10.008164358672738
+    - unique sentences: 85861
+	- EN unique terms: 18088
+	- IT unique terms: 28544
+            

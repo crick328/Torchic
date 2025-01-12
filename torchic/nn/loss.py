@@ -1,6 +1,7 @@
 from torchic.cuda_tensor import Tensor
 from torchic.nn.activations import Softmax, LogSoftmax
-import torchic.backward as back_op
+import torchic.autograd.functions as back_op
+from torchic.dtypes import int64
 
 # check derivata
 
@@ -9,31 +10,58 @@ import torchic.backward as back_op
 # Potrei assegnarlo ad ogni call, ma sarebbe molto inefficiente ed overkill.
 # Potrei metterlo come arg, ma sarebbe fragile e controintuitivo
 
-# Bisogna aggiustare la loss function. Non può essere SE, ma così:
-# https://pytorch.org/docs/stable/generated/torch.nn.MSELoss.html
-class SELoss:
+
+class LossFunction:
+    pass
+
+
+class MSELoss:
+    __slots__ = ("_reduction")
+
+    def __init__(self, reduction: str="mean") -> None:
+        self._check_reduction_value(reduction)
+        self._reduction = reduction
+
+    @property
+    def reduction(self) -> str:
+        return self._reduction
+    
+    @reduction.setter
+    def reduction(self, value: str) -> None:
+        self._check_reduction_value(value)
+        self._reduction = value
+
+    def _check_reduction_value(self, value):
+        if value not in ("none", "sum", "mean"):
+            raise ValueError(
+                "Reduction can be 'none', 'sum' or 'mean', received "
+                f"{value} instead."
+            )
+
     def __call__(self, x: Tensor, target: Tensor) -> Tensor:
-        # per ora è solo una potenza, basta solo fare il return dell'operazione con **
         '''
         Squared Error
         Input:
-        - x: Tensor object containing the output of the network (predicted)
+        - x: output of the network (predicted)
         - target: Tensor.data object containing the desired output values
         '''
         loss = Tensor(x._device.power(x.data - target.data, 2))
-        
-        '''
-        def _SELoss_backward(gradient: Tensor) -> None:
-            # non aggiorno il grad di loss perché la derivata di loss w.r.t. loss è 1
-            x.grad_fn(2*(x.data - target.data) * gradient)
-            # rilascio il grafo computazionale in modo tale che il garbage collector possa cancellare le variabili inutili
-            x.grad_fn = None
-        '''
 
-        # scritto per uniformità e flessibilità, si può valutare di rimuoverlo
         if x.requires_grad:
-            #loss.grad_fn=_SELoss_backward
-            loss.grad_fn = back_op.SELossBackward(x, target)
+            loss.grad_fn = back_op.SELossBackward(x, target.data)
+        
+        # per compatibilita' con PyTorch
+        match self.reduction:
+            case "mean":
+                loss = loss.mean()
+            case "sum":
+                loss = loss.sum()
+            case "none":
+                pass
+            case _:
+                raise RuntimeError(
+                    "Why did you changed the ._reduction attribute? :)"
+                )
         return loss
 
 
@@ -47,27 +75,31 @@ class NegativeLogLikehoodLoss:
     Si usi questa loss se si desidera scegliere il tipo di softmax da usare e se
     si vuole che faccia parte dei layer del modello, altrimenti optare per la cross entropy. 
     '''
-    def __call__(self, x_pred: Tensor, y_trg: Tensor, eps: int=1e-10) -> Tensor:
+    def __call__(self, x: Tensor, target: Tensor, eps: int=1e-10) -> Tensor:
         '''
         pred_p: output tensor of model containing all out values
         eps: small offset value to avoid log(0)
 
         returns: scalar tensor
         '''
-        loss = -Tensor(x_pred.data * y_trg._device.log(y_trg.data + eps)).sum()#.mean()
+        loss = -Tensor(x.data * target._device.log(target.data + eps)).sum()#.mean()
 
         def _NLLLoss_backward(cr_grad):
-            x_pred._run_backward(
+            x._run_backward(
                 # d/dx(y*log(x + eps)) = y * d/dx(log(x + eps)) = y * 1/(x + eps)
-                self_grad=-y_trg.data/(x_pred.data + eps) * cr_grad
+                self_grad=-target.data/(x.data + eps) * cr_grad
             )
 
-        if x_pred.requires_grad:
-            loss.grad_fn = _NLLLoss_backward
+        if x.requires_grad:
+            #loss.grad_fn = _NLLLoss_backward
+            loss.grad_fn = back_op.NLLLossBackward(x, target, eps)
         return loss
 
 
 class CrossEntropyLoss:
+    __slots__ = ("log_soft", "softmax", "reduction",
+                 "ignore_index", "label_smoothing")
+
     '''
     Combinazione ottimizzata di `torch.nn.LogSoftmax` e `torch.nn.NegativeLogLikehoodLoss`.
     Viene eseguita la (log) softmax sul tensore `x` e poi viene calcolata la loss. Per
@@ -151,7 +183,6 @@ class CrossEntropyLoss:
         loss = -(smoothed_targets * log_prob_x).sum(-1)
         
         if self.ignore_index != -100:
-            from torchic import int64
             if not target._device.issubdtype(target.dtype, target._device.integer):
                 #target.data = Tensor._to_dtype(target.data, int64)
                 raise RuntimeError(

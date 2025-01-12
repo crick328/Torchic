@@ -1,23 +1,42 @@
 # ha ragione il bro di stackoverlow: non sta alla classe Tensor il cambio dei device
 # di tutte le istanze, ma a chi li contiene (layer e modelli!)
 import timeit
-import cupy as cp
+#import cupy as cp
 import numpy as np
-import torch
+#import torch
 import time
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
 from torchic import Tensor
 from torchic import nn
 from torchic.tools.visualization.graphs import draw_graph
 from torchic.tools.helpers import rand
 
-print(rand([2,3]))
-a = [1,2,3]
-b = np.array(a, np.int64)
-# se il default della lib e' 32, voglio convertirlo
-# in int32. Percio', dovrei leggere il suo dtype e castarlo a 32
-print(b.dtype.kind)
+
+x = Tensor([1.,2.,3.], requires_grad=True)
+a = Tensor([1.,2.,3.], requires_grad=True)
+b = Tensor([[1.,2.,3.],[1.,2.,3.],[1.,2.,3.]], requires_grad=True)
+
+print(x.dtype)
+
+c = a*x
+for _ in range(0,5):
+    c = c + c@b
+c.mean().backward()
+print(x.grad)
+
+import torch
+
+x = torch.tensor(x.data, requires_grad=True)
+a = torch.tensor(a.data, requires_grad=True)
+b = torch.tensor(b.data, requires_grad=True)
+
+c = a*x
+for _ in range(0,5):
+    c = c + c@b
+c.mean().backward()
+print(x.grad)
+
 
 '''
 import test_cuda

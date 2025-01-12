@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
 
 from torchic import Tensor, int64, nn, rand, randint, draw_graph
 import torch

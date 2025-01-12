@@ -1,10 +1,10 @@
 import re
-import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
+#import sys
+#sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
 from torchic import nn
 
 
-def _parse_model_string(model_str):
+def _parse_model_repr(model_str):
     # Rimuovi spazi bianchi superflui e le nuove linee
     model_str = model_str.replace('\n', '').replace(' ', '')
     
@@ -35,12 +35,16 @@ def _parse_model_string(model_str):
 
 def _is_number(string):
     # tengo conto di segni e notazioni scientifiche
-    return string.lstrip('-').replace('e','',1).replace('.','',1).isdigit()
+    # tolgo il - iniziale, le "e" della notaz. scientifica, la virgola
+    # ed un eventuale segno - dell'esponente. Dopodioche', chiedo
+    # se cio' che rimane e' un numero o no
+    return string.lstrip('-').replace('e','',1).replace('-','',1).replace('.','',1).isdigit()
 
 
 def _parse_arg(arg: str):
     if _is_number(arg):
-        if "." in arg:
+        # se ha virgola o notazione esponenziale con esp. negativo
+        if "." in arg or "e-" in arg:
             return float(arg)
         else:
             return int(arg)
@@ -106,15 +110,28 @@ def build_from_repr(model_repr: str):
             [-0.4336, -1.5017, -1.083 ]
         ], requires_grad=True)
     '''
-    model_dict = _parse_model_string(model_repr)
-
-    layers = [create_layer(layer) for layer in model_dict["layers"]]
+    model_dict = _parse_model_repr(model_repr)
     model_class = getattr(nn, model_dict['model_type'], None)
 
     if not model_class:
         raise ValueError(f"Model {model_class['class']} not found in torchic.nn")
     
-    return model_class(*layers)
+    if issubclass(model_class, nn.Sequential):
+        # ha bisogno di ricevere i suoi layers al momento dell'init
+        layers = [create_layer(layer) for layer in model_dict["layers"]]
+        return model_class(*layers)
+    elif issubclass(model_class, nn.Module):
+        pattern = r"(\w+)=([\w\.\-]+)"
+        matches = re.findall(pattern, model_repr)
+
+        parameters = {key: _parse_arg(value) for key, value in matches}
+        return model_class(**parameters)
+    else:
+        raise RuntimeError(
+            "Ma che modello e'?"
+        )
+    
+    
 
 
 # Esempio di utilizzo

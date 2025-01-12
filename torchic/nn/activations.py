@@ -3,9 +3,9 @@
 # metodo interessante per mantenere nella cache i risultati: https://docs.python.org/3/library/functools.html#functools.lru_cache
 
 from torchic.cuda_tensor import Tensor
-import torchic.backward as back_op
-import numpy as np
-import cupy as cp
+import torchic.autograd.functions as back_op
+#import numpy as np
+#import cupy as cp
 
 
 # perche' mi serve capire se una classe e' cosa.
@@ -24,20 +24,30 @@ class Sigmoid(ActivationFunction):
     Output: 1 dimensional Tensor having same shape as input
     '''
     def __call__(self, x: Tensor) -> Tensor:
-        sigmoid = Tensor(1/(1 + x._device.exp(-x)))
+        sigmoid = Tensor(1/(1 + x._device.exp(-x.data)))
 
-        def _sigmoid_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
+        def _sigmoid_backward(cr_grad) -> None:
             # d/dσ = σ(x) * (1 - σ(x)); dL/dσ = d/dσ * prodotto derivate parziali delle operazioni precedenti
             x._run_backward( sigmoid.data * (1 - sigmoid.data) * cr_grad )
 
         if x.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
             # non è più considerato leaf tensor
-            sigmoid.grad_fn = _sigmoid_backward
+            #sigmoid.grad_fn = _sigmoid_backward
+            sigmoid.grad_fn = back_op.SigmoidBackward(x, sigmoid.data)
         return sigmoid
     
     def __repr__(self):
         return "Sigmoid()"
+    
+
+class Tanh(ActivationFunction):
+    def __call__(self, x: Tensor) -> Tensor:
+        tanh = Tensor(x._device.tanh(x.data))
+
+        if x.requires_grad:
+            tanh.grad_fn =  back_op.TanhBackward(x, tanh.data)
+        return tanh
 
 
 class ReLU(ActivationFunction):
@@ -65,8 +75,10 @@ class Softmax(ActivationFunction):
         # questa singola linea di codice previene overflow senza modificare
         # l'efficacia del gradient.
         shiftx = x.data - x.data.max(axis=self.dim, keepdims=True)
-        exps = x._device.exp(shiftx)
-        softmax = exps / x._device.sum(exps, axis=self.dim, keepdims=True)
+        #exps = x._device.exp(shiftx)
+        #softmax = exps / x._device.sum(exps, axis=self.dim, keepdims=True)
+        softmax = x._device.exp(shiftx)
+        softmax /= x._device.sum(softmax, axis=self.dim, keepdims=True)
         output = Tensor(softmax)
         
         if x.requires_grad:
@@ -88,30 +100,15 @@ class LogSoftmax(ActivationFunction):
 
     def __call__(self, x: Tensor) -> Tensor:
         # questa singola linea di codice previene overflow senza modificare
-        # l'efficacia del gradient.
-        #shiftx = x.data - x.data.max(axis=self.dim, keepdims=True)
-        #logsumexp = x._device.log(x._device.exp(shiftx).sum(axis=self.dim, keepdims=True))
-        #softmax = Tensor(x.data - shiftx - logsumexp)
-
-        shiftx = x.data - x.data.max(axis=self.dim, keepdims=True)  # Sottrai il massimo per evitare l'overflow
-        softmax = Tensor(shiftx - x._device.log(x._device.exp(shiftx).sum(axis=self.dim, keepdims=True)))  # Calcola il log del softmax
-
-        # NOTE: riciclare il calcolo della softmax è geniale! Fallo ovunque!
-        def _log_softmax_backward(cr_grad: np.ndarray|cp.ndarray) -> None:
-            '''
-            la derivata della softmax è una matrice. Ogni colonna rappresenta una sua
-            derivata completa w.r.t. un input
-            '''
-            # Con bruteforce di CHADGPT e match di logica della softmax, ecco una
-            # derivata di cui al momento non so assolutamente nulla sulla
-            # sua derivazione matematica!
-            x._run_backward( cr_grad - x._device.exp(softmax.data) * cr_grad.sum(axis=self.dim, keepdims=True) )
+        # l'efficacia del gradient
+        shiftx = x.data - x.data.max(axis=self.dim, keepdims=True)
+        shiftx -= x._device.log(x._device.exp(shiftx).sum(axis=self.dim, keepdims=True))
+        softmax = Tensor(shiftx)
 
         if x.requires_grad:
             # da qua in avanti, requires_grad non sarà più modificabile perché
             # non è più considerato leaf tensor
-            #softmax.grad_fn = _log_softmax_backward
-            softmax.grad_fn = back_op.LogSoftmaxBackward(x, self.dim, softmax)
+            softmax.grad_fn = back_op.LogSoftmaxBackward(x, self.dim, softmax.data)
         return softmax
     
     def __repr__(self):

@@ -104,19 +104,71 @@ Torchic 2.x: Introduzione della property dtype per compatibilita' con PyTorch e 
             circostanze, produceva gradienti nulli per cancellazione numerica nel calcolo del reciproco. Rework di load_model
             per supportare il load di modelli con layer complessi.
             (Il transformer finalmente traina)
-
+            Implementato il setup.py e la possibilita' di usare la libreria senza cuda o componenti visive.
+            Implementato un check per impedire che un tensor integer possa richiedere l'aggiornamento dei gradienti
+Torchic 3.0: riscrittura bw, rilevazione e select auto device a scelta,
+            corretto errore nel calcolo eta
+            ottimizzazione choose dtype e conversioni di gradienti e tensori
+            introduzione modalita' device auto
+            possibilita' di scegliere numero di streams, se usare la null e soglia minima ms
+Torchic 3.x (?):
+            passo i dati esplicitamente su cpu prima di salvare su file
+            clone() con backward, detach(), operazioni in-place, promotion per operazioni anche con non-tensors
+            Aggiunto il wrapper .T
+            Aggiunto BLEU score
+            aggiornata la SELoss per diventare MSELoss compatibile con pytorch
+            nuovo metodo di testing
+            Bug fix Transformer caricato come Sequential
+            Introduzione funzione di warmup per Transformer
+            Fix creazione maschere (includevo anche la diagonale)
+            Fix funzionamento masked_fill() e relativa backward
+            Fix print tensori per renderli piu' leggibili (anziche' one liner)
+            Fix and upgrade per rendere fedele draw_graph. Ora non sduplica piu' i tensori di accumulazione. Aggiunta
+            visualizzazione di ref_count, grad shape e scritta "scalar" se il tensore e' scalare (anziche' mostrare "()")
+            Fix di size dove chiedere .size(0) restituiva le dimensioni totali dell'array
+            Fix per fare in modo che il confronto tra tensors dia un Tensor di bool e non un singolo bool
+            Aggiunta possibilita' di confrontare Tensor e scalari
+            Rifinitura del Bilingual dataset: ora le mask sono nativamente dei tensori bool anziche' ricastarle
+            alla fine in uint8
+            Corretto il Transformer e introdotta la mode "norm_first"
+            Fix bug state_dict in cui veniva inserito un solo ingresso di ModuleList
+            Aggiornamento Module.state_dict() per fare in modo che condivida la logica di .parameters()
+            Fix inizializzazione bias (usavo la init anziche' inizializzarli a 0)
+            rifinitura gain nelle init functions
+            Fix fancy indexing che a volte svalvolava
+            Introdotto padding dinamico
+            aggiunto clamp e usato nell'attention
+            Fix bug caricamento modello dove veniva caricato su cpu anche se era settato cuda come device globale
+            Introdotto squeeze con backward
+            Introdotto .numpy() per compatibilita'
+            Speed up Adam (Adam 4)
+            Rifinitura modello transformer (TransformerV2) 
+            Visualizzazione heads + logica per salvare le attn_weights
+            Creazione ds SG + rifiniture
 
 Transformer: Replica v8 -> Torchic 2.x. Corretti un'infinita' di bug, ha richiesto modifiche alla lib principale e tante cose.
 cose richieste dal transformer:
 - softmax multidimensionale
 - logosft con supporto multidimensionale
 - cceloss con tutti i parametri e supporto multidimensionale
-- std con supporto multidimensionale
-- var con supporto multidimensionale
-- mean multidimensionale
+- std con supporto multidimensionale con keepdim (anche in bw)
+- var con supporto multidimensionale con keepdim (anche in bw)
+- mean multidimensionale con keepdim (anche in bw)
+- squeeze
 - unsqueeze
 - view
+- operatore __and__
+- creazione Dataloader e Dataset
+- creazione funzioni helpers (?) (zeros, ones, cos, sin, ecc.)
+- Embeddings e backward
+- Dropout
+- operazione di indexing e relativa backward
+- "gain" per certe init functions
+- contiguous
+- Adam
+- random_split
 - patch memory leak
-- patch caso gradiente nullo in div baclward
-- rework per interrompere backward e accumuloare gradienti in certi nodi
+- patch caso gradiente nullo in div backward
+- rework per interrompere backward e accumulare gradienti in certi nodi
 - dataloaders di merd
++ tutti i layers del Transformer

@@ -1,5 +1,5 @@
 from torchic.cuda_tensor import Tensor
-from torchic.nn.module import Module, ModuleList
+from torchic.nn.module import Module
 
 # si puo' creare una classe Module nel momento in cui vedi che ci sono delle
 # cose che sono uguali per ogni classe. Ad esempio, Linear e Sequential hanno
@@ -7,7 +7,8 @@ from torchic.nn.module import Module, ModuleList
 # file. Quando ne avrai bisongo, implementalo.
 # Esempio:
 
-
+# questa classe non ha senso che erediti da Module perche' non ha
+# bisogno della sua struttura. Questa deve essere una classe dinamica
 class Sequential:
     '''
     Questa classe si può usare in due modi:
@@ -26,37 +27,33 @@ class Sequential:
         for layer in self.__dict__.values():
             yield layer
     
-    def forward(self, x: Tensor) -> Tensor:
+    def __call__(self, x: Tensor) -> Tensor:
         for layer in self:
             x = layer(x)
         return x
-    
     
     def to(self, device: str) -> None:
         for layer in self:
             if isinstance(layer, Module):
                 layer.to(device)
 
-    def parameters(self, trainable_only: bool=True, with_names: bool=False):
+    def number_of_params(self, trainable_only=False) -> int:
+        n = 0
+        for layer in self:
+            if isinstance(layer, Module):
+                n += layer.number_of_params()
+        return n
+
+    def parameters(self, trainable_only: bool=True, with_names: bool=False, tensor_only: bool=True):
         """
         returns all trainable tensors of the model
         """
 
         for name, layer in self.__dict__.items():
             if isinstance(layer, Module):
-                yield from layer.parameters(trainable_only, with_names, f"{name}.")
+                yield from layer.parameters(trainable_only, with_names, tensor_only, name)
     
-    
-
-    def number_of_params(self, trainable_only=False) -> int:
-        n = 0
-
-        for layer in self:
-            if isinstance(layer, Module):
-                for param in layer.parameters(trainable_only):
-                    n += param.size()
-        return n
-    
+    # chiamato in save() per salvare i parametri
     def state_dict(self) -> dict:
         '''
         Returns the state of the trainable params.
@@ -76,17 +73,26 @@ class Sequential:
             'linear4.weights': array([[0.8089074 ], [0.26144603]], dtype=float32),
             'linear4.bias': array([0.04495028], dtype=float32)}
         '''
-        params_dict = {}
+        model_state = {}
 
-        # NOTE: funziona come previsto per layer multistrato?
-        # Restituisce davvero dict della forma
-        # {'encoder0.embeddings0.weights': [0.2, 0.45]}?
         for name, layer in self.__dict__.items():
             if isinstance(layer, Module):
-                for key, value in layer.state_dict(name):
-                    params_dict[key] = value
-                    
-        return params_dict
+                #print(list(layer.state_dict(name))[0])
+                #for key, value in layer.state_dict(name):
+                    #model_state[key] = value
+                # unisco i dizionari
+                model_state |= layer.state_dict(name)
+        return model_state
+    
+    def train(self):
+        for layer in self:
+            if isinstance(layer, Module):
+                layer.train()
+
+    def eval(self):
+        for layer in self:
+            if isinstance(layer, Module):
+                layer.eval()
     
 
     def __getitem__(self, index):
@@ -111,64 +117,16 @@ class Sequential:
                     (7): Softmax(dim=0),
             )
         '''
-        '''
-        output = "Sequential(\n"
-        counter = 0
-        for layer in self:
-            output = output + f"\t({counter}): {layer},\n"
-            counter += 1
-        return output + ")"
-        '''
-        def build_fstring(elem, depth: int):
-            # incolonno bene
-            tab = "  "
-            tabs = tab * depth
-
-            if isinstance(elem, ModuleList):
-                output = f"{elem.__class__.__name__}(\n"
-
-                # se ModuleList contiene layer tutti uguali
-                if len(set(repr(module) for module in elem)) == 1:
-                    output += (
-                        f"{tabs}(0-{len(elem) - 1}): {len(elem)} x "
-                        + build_fstring(elem[0], depth + 1)
-                        )
-                else:
-                    for i, module in enumerate(elem):
-                        output += (
-                            f"{tabs}({i}): "
-                            + build_fstring(module, depth + 1)
-                            )
-                return output + f"{tab * (depth - 1)})\n"
-            
-            elif isinstance(elem, Module):
-                # se il Module non ha altri Module come attributi
-                if all(not isinstance(param, Module) for _, param in elem):
-                    return f"{repr(elem)}\n"
-                else:
-                    output = f"{elem.__class__.__name__}(\n"
-
-                    for name, param in elem:
-                        if isinstance(param, Module):
-                            output += (
-                                f"{tabs}({name}): "
-                                + build_fstring(param, depth + 1)
-                                )
-                    return output + f"{tab * (depth - 1)})\n"
-
 
         output = f"{self.__class__.__name__}(\n"
         for name, layer in self.__dict__.items():
-            output += f"  ({name}): " + build_fstring(layer, 2)
+            #output += f"  ({name}): " + build_fstring(layer, 2)
+            output += f"  ({name}): " + Module._build_fstring(layer, 2)
         return output + ")"
 
-    
-    # chiamato in save_model() nei metadata
+    # chiamato in save() nei metadata
     def __repr__(self):
-        output = "nn.Sequential(\n"
+        output = f"nn.{self.__class__.__name__}(\n"
         for layer in self:
             output = output + f"\tnn.{repr(layer)},\n"
         return output + ")"
-
-    def __call__(self, x) -> Tensor:
-        return self.forward(x)

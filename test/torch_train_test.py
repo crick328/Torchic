@@ -1,6 +1,6 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
-from torchic.datasets.my_mnist import AutoMnist
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
+from torchic.data.dataloaders.my_mnist import AutoMnist
 import time
 import random
 from torch import nn, optim, tensor

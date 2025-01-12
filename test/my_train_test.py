@@ -1,17 +1,19 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
+sys.path.insert(1, r"C:\Users\admin\Desktop\NN Lab\Projects\Torchic\Torchic 3.0 Beta")
 from torchic import nn
-from torchic.datasets.my_mnist import AutoMnist
-from torchic.tools import training
-from torchic.tools.visualization import show
+from torchic.data.dataloaders.my_mnist import AutoMnist
+from torchic.tools.training import metrics
+#from torchic.tools.visualization import show
 from torchic.tools.visualization.graphs import draw_graph
 import time
 import random
 import torchic
+from torchic.nn.models.save_load import save, load_architecture
+from torchic.autograd.cuda.funct_cost import branch_time_estimator
 
 
 # https://ml4a.github.io/ml4a/looking_inside_neural_nets/
-DEVICE = "cuda"
+DEVICE = "cpu"
 PROFILER = False
 EPOCHS = 1
 BATCH_SIZE = 300
@@ -19,12 +21,6 @@ LIB_TRAINING_LOOP=False
 
 torchic.set_default_precision(32)
 torchic.set_default_device(DEVICE)
-
-# NOTE: IL BATCHING E' IMPLEMENTATO IN MODO NAIVE!
-# Dovresti manipolare i tensori per creare una batch dim,
-# proprio come nel transformer!
-# Magari correggi in un train_test_v2.py 
-
 
 
 # 3.7 min su cpu no profiler np.float64 (grad come tensor)
@@ -56,6 +52,8 @@ torchic.set_default_device(DEVICE)
 
 # 3.05 minuti con SGD su cuda no profiler (no __data_manager)
 
+# 3.67 cuda sgd
+
 
 
 train_images = AutoMnist.train_images(preprocess=True)
@@ -79,12 +77,12 @@ model = nn.Sequential(
     nn.Linear(100, 10),
     nn.Softmax(0)
 )
+
 #print(list(model.parameters()))
-print(model)
 
-model.to(DEVICE)
+#model.to(DEVICE)
 
-loss_fn = nn.SELoss()
+loss_fn = nn.MSELoss()
 optimizer = nn.optim.SGD(model.parameters(), lr=0.01)
 #optimizer = nn.optim.AdamV3(model.parameters(), lr=0.01)
 N_BATCH = int(total_train_samples/BATCH_SIZE)
@@ -99,7 +97,7 @@ if PROFILER:
 start_time = time.time()
 
 if LIB_TRAINING_LOOP:
-    metrics = training.supervised_training(
+    metrics = metrics.supervised_training(
         model=model,
         train=train_images,
         train_labels=train_labels,
@@ -124,6 +122,8 @@ else:
                 loss = loss_fn(predicted, train_labels[i])
                 loss = loss.mean()
                 #draw_graph(predicted)
+                #print(branch_time_estimator(loss))
+                #exit()
                 loss.backward()
 
                 optimizer.step()
@@ -133,6 +133,8 @@ else:
 
                 if predicted.data.argmax() == train_labels[i].data.argmax(): #train_labels[i].tolist().index(1):
                     correct_predictions += 1
+                #break
+            #break
         
             #optimizer.step()
             #optimizer.zero_grad()
@@ -161,4 +163,7 @@ if PROFILER:
 
     subprocess.run(["snakeviz", "profiler_data2.prof"])
 
-training.auto_eval(model, test_images, test_labels)
+save(model, optim=None, filename="cazzogigante")
+model = load_architecture("cazzogigante")
+
+metrics.auto_eval(model, test_images, test_labels)

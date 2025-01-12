@@ -1,7 +1,17 @@
 from torchic.cuda_tensor import Tensor
-import matplotlib.pyplot as plt
+from torchic.settings import VISUAL_AVAILABLE
 import pandas as pd
 import numpy as np
+
+# ogni funzione di questo file richiede matplotlib, quindi
+# tantovale non farlo importare direttamente
+if not VISUAL_AVAILABLE:
+    raise ImportError(
+        "Visual tools (matplotlib) are not available. "
+        "Please install the necessary packages to use this module."
+    )
+
+import matplotlib as plt
 
 
 

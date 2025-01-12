@@ -103,6 +103,38 @@ Implementa lo stack di funzioni dei modulelist
 IL BATCHING E' IMPLEMENTATO IN MODO NAIVE! Dovresti manipolare i tensori per creare una
 batch dim, proprio come nel transformer! Magari correggi in un train_test_v2.py
 
+Bisogna ottimizzare parecchio la MHA e la sua backprop soprattutto con
+PARALLELIZZAZIONE in forward e in backward. Approfittane per
+riorganizzare i commenti nel transformer.
+In generale, non guardare solo alla backprop, anzi, guardara soprattutto
+altrove se sei alla ricerca di ottimizzazioni!
+
+Voglio lavorare anche sulla rete neurale di scacchi! O creo l'ambiente o
+uso quello di gym, basta che il resto possa farlo con la mia libreria in RL
+
+Sono abbastanza sicuro che puoi organizzare ed automatizzare bene tutti i test
+seguendo una convenzione di python. E' un'ottima occasione per fare ordine ed
+eliminare cio' che non e' piu' necessario, oltre che facilitare la vita
+con i test automatici
+
+pytorch ha .shape come property, non come funzione
+
+posso pensare ad un sistema che, al secondo backward pass, guarda i dati
+del grafo in cache e valuta se non runnare un ramo perche' il prossimo
+e' piu' worth
+
+Andare multi-gpu
+
+- model arena: scrivi una ventina di frasi di tuo pugno, prendi un set di modelli e vedi chi totalizza un bleu medio superiore 
+- no grad
+- riorganizzare file Kaggle
+- fase 2: miglioramento calcolo loss (si vedrà con il Transformer decoder only)
+- cercare informazioni su Transformer decoder only (metodo di training efficiente, architettura, rifiniture)
+- sfrutta gpt per integrare il dataset! Servono info su AI
+- nota: quando creerai il super dataset, annotati le distribuzioni (40% neural cloud, 20% steins gate, ecc.)
+- (sfizio) real-time visualization delle connessioni tra i neuroni. Classica rappresentazione usata per mnist e nel RL
+- organizza e dividi il codice del transformer
+
 
 LIBRERIE
 cupy-cuda12x==13.0.0    (pip install cupy-cuda12x) 

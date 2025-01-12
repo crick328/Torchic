@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 2.3")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
 from torchic.cuda_tensor import Tensor
 import torch
 from torch import tensor
@@ -71,7 +71,6 @@ assert torch.allclose(tensor(my_f.data), torch_f)
 assert torch.allclose(tensor(my_g.data), torch_g)
 assert torch.allclose(tensor(my_h.data), torch_h)
 #assert torch.allclose(tensor(my_i.data), torch_i)
-
 
 assert torch.allclose(tensor(my_tensor6.grad), torch_tensor6.grad)
 assert torch.allclose(tensor(my_tensor5.grad), torch_tensor5.grad)

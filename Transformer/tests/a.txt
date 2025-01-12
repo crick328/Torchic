@@ -1,5 +1,0 @@
-testa ogni singolo componente del transformer con la sua controparte di PyTorch.
-Questo richiede almeno delle frasi prese da un ds e trattate, quindi devi
-prima finire il DataLoader.
-Testa output e gradients dei singoli componenti e di quelli concatenati.
-Fai test anche su GPU!

@@ -1,7 +1,8 @@
 from torchic.cuda_tensor import Tensor
-from torchic.backward import EmbeddingBackward
+from torchic.autograd.functions import EmbeddingBackward
 import torchic.nn.initializers as inits
 from torchic.nn.module import Module
+from torchic.tools.helpers import zeros
 
 
 # Linear Layer (corrisponde al Dense layer di Tensorflow se quest'ultimo è settato con activation=None)
@@ -13,6 +14,7 @@ from torchic.nn.module import Module
 # caricamenti separati e unici insieme al modello) ed e' sostanzialmente la stessa cosa.
 # O istanzi e assegni tramite args o prima istanzi e poi assegni, ma le tempistiche
 # sono quelle...
+# NOTE: serve type hint in modo che si capisca che le init restituiscono Tensor!
 class Linear(Module):
     __slots__ = ("has_bias", "weights", "bias")
 
@@ -33,19 +35,13 @@ class Linear(Module):
 
         self.has_bias = bias
         self.weights = _init_funct(n_input, n_output, **_init_kwargs)
-        if bias:
-            self.bias = _init_funct(n_input, n_output, is_bias=True, **_init_kwargs)
+        self.bias = zeros((n_output,), requires_grad=True) if bias else None
     
-    # si potrebbe anche fare in modo che la logica sia scritta nel .forward()
-    # in modo tale che si sovrascrive solo quello quando si eredita e di
-    # default il __call__lo chiama (che e' cio' che hai fatto con Sequential)
-    def forward(self, x: Tensor) -> Tensor:
+    def __call__(self, x: Tensor) -> Tensor:
         x = x.matmul(self.weights)
-        
-        return x + self.bias if self.has_bias else x
-    
-    def __call__(self, *args, **kwargs) -> Tensor:
-        return self.forward(*args, **kwargs)
+        # NOTE: l'eventuale broadcasting del bias viene gestito in autonomia dalle lib
+        #return x + self.bias if self.has_bias else x
+        return x if not self.has_bias else x + self.bias
 
     # metodo chiamato con print()
     def __str__(self):
@@ -91,9 +87,9 @@ class Embedding(Linear):
     def __init__(self, vocab_size: int, embedding_size: int, *args, **kwargs):
         # questa matrix pare che giovi sempre dell'init della Xavier norm
         super().__init__(vocab_size, embedding_size, *args, bias=False, **kwargs)
-        #self.weights = inits.xavier_norm(vocab_size, embedding_size) if _weights is None else _weights
+        #super().__init__(embedding_size, vocab_size, *args, bias=False, **kwargs)
     
-    def forward(self, x: Tensor) -> Tensor:
+    def __call__(self, x: Tensor) -> Tensor:
         '''
         Args:
             x (Tensor): integer 1D tensor of shape (1, N)
@@ -109,7 +105,7 @@ class Embedding(Linear):
         if self.weights.requires_grad:
             # rimuovo IndexBackward, che in questo caso non serve
             output._grad_fn = None
-            output.grad_fn = EmbeddingBackward(self.weights, x)
+            output.grad_fn = EmbeddingBackward(x, self.weights)
         return output
     
 
@@ -118,16 +114,17 @@ class Dropout(Module):
     Setta a 0 randomicamente alcuni valori dell'input secondo la probabilità data in input.
     Sono attivi solo durante la fase di training (cosa che devi implementare).
 
-    probability: valore compreso tra (0, 1). Corrisponde alla percentuale di valori
-                 settati a zero.
+    Args:
+        p (float): probability of an element to be zeroed. It has to be
+                 in range [0, 1]
     '''
     __slots__ = ("p", "training")
 
-    def __init__(self, probability: float=0.5):
-        self.p = probability
+    def __init__(self, p: float=0.5):
+        self.p = p
         self.training = True
 
-    def forward(self, x):
+    def __call__(self, x):
         if self.training:
             # Bernoulli (bilinear) distribution
             mask = Tensor(x._device.random.rand(*x.shape()) > self.p)
@@ -136,9 +133,3 @@ class Dropout(Module):
             x *= mask
             x *= scale
         return x
-        
-    def eval(self):
-        self.training = False
-
-    def train(self):
-        self.training = True
