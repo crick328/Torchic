@@ -123,7 +123,7 @@ def dummy_backward(root_tensor):
                     # stesso append della backward
                     if parent_grad is not None:
                         substack.append((parent, parent_grad))
-            tensor.grad_fn=None
+            tensor._grad_fn=None
 
     return nodes, edges
 

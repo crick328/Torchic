@@ -1,6 +1,7 @@
 from torchic.cuda_tensor import Tensor
 from torchic.nn.activations import Softmax, LogSoftmax
 import torchic.autograd.functions as back_op
+from torchic.autograd.functions import register_backward_if_needed
 from torchic.dtypes import int64
 
 # check derivata
@@ -47,8 +48,7 @@ class MSELoss:
         '''
         loss = Tensor(x._device.power(x.data - target.data, 2))
 
-        if x.requires_grad:
-            loss.grad_fn = back_op.SELossBackward(x, target.data)
+        register_backward_if_needed(loss, back_op.SELossBackward(x, target.data))
         
         # per compatibilita' con PyTorch
         match self.reduction:
@@ -90,9 +90,7 @@ class NegativeLogLikehoodLoss:
                 self_grad=-target.data/(x.data + eps) * cr_grad
             )
 
-        if x.requires_grad:
-            #loss.grad_fn = _NLLLoss_backward
-            loss.grad_fn = back_op.NLLLossBackward(x, target, eps)
+        register_backward_if_needed(loss, back_op.NLLLossBackward(x, target, eps))
         return loss
 
 

@@ -106,12 +106,13 @@ Torchic 2.x: Introduzione della property dtype per compatibilita' con PyTorch e 
             (Il transformer finalmente traina)
             Implementato il setup.py e la possibilita' di usare la libreria senza cuda o componenti visive.
             Implementato un check per impedire che un tensor integer possa richiedere l'aggiornamento dei gradienti
-Torchic 3.0: riscrittura bw, rilevazione e select auto device a scelta,
+Torchic 3.0 Beta: riscrittura bw, rilevazione e select auto device a scelta,
             corretto errore nel calcolo eta
             ottimizzazione choose dtype e conversioni di gradienti e tensori
             introduzione modalita' device auto
             possibilita' di scegliere numero di streams, se usare la null e soglia minima ms
-Torchic 3.x (?):
+            Sistema streams asincrone con auto-distribuzione del carico di lavoro
+Torchic 3.0 (?):
             passo i dati esplicitamente su cpu prima di salvare su file
             clone() con backward, detach(), operazioni in-place, promotion per operazioni anche con non-tensors
             Aggiunto il wrapper .T
@@ -145,6 +146,17 @@ Torchic 3.x (?):
             Rifinitura modello transformer (TransformerV2) 
             Visualizzazione heads + logica per salvare le attn_weights
             Creazione ds SG + rifiniture
+Torchic 3.x: introduzione dei context manager no_grad e enable_grad
+            centralizzazione logica di assegnazione grad_fn tramite register_backward_if_needed
+            Implementato QKV e KV fusion, .permute() con backward, fatto in modo che grad_fn non fosse sovrascrivibile 
+            (cosa che ha richiesto di uniformare delle logiche di backward).
+            Introdotto ForceSlots anche sulle ActivationFunctions.
+            Introduzione di _fast_init() al posto di _manage_data() nell'init di Tensor. Speedup di circa il +750%
+            rispetto al metodo precedente.
+            Fixxato .to() quando riceveva due args, reso congruo (per combinazione) con pytorch
+            e introdotta relativa backward (ToCopyBackward). Primi test scritti con PyTest. Introduced
+            bfloat16
+
 
 Transformer: Replica v8 -> Torchic 2.x. Corretti un'infinita' di bug, ha richiesto modifiche alla lib principale e tante cose.
 cose richieste dal transformer:

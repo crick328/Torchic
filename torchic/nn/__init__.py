@@ -9,3 +9,5 @@ from torchic.nn.optim import SGD, AdamV3
 from torchic.nn.module import Module, ModuleList
 from torchic.nn.models.sequential import Sequential
 from torchic.nn.models.transformer import *
+from torchic.nn.models import transformer
+from torchic.nn import models

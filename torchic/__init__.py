@@ -12,3 +12,4 @@ from torchic.dtypes import float16, float32, float64
 from torchic.dtypes import complex64
 from torchic.dtypes import np_bool
 from torchic.dtypes import uint8, uint16, uint32, uint64
+from torchic.dtypes import bfloat16

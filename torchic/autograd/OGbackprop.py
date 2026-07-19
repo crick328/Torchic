@@ -5,7 +5,7 @@ if TYPE_CHECKING:
 
 from torchic.settings import CUPY_AVAILABLE, CONFIG
 
-USING_CUDA = False #True if CONFIG["device"] == "cuda" else False
+USING_CUDA = False #True if CONFIG["default_device"] == "cuda" else False
 if CUPY_AVAILABLE:
     import cupy as cp
 

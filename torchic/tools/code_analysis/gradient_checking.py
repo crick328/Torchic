@@ -51,7 +51,7 @@ def check_gradient(layer: nn.Module, inputs: tuple[Tensor], eps=1e-7, tolerance=
     layer_output = layer(*inputs)
     layer_output.sum().backward()
 
-    # 2 step: calcolo del gradiente numerico (gradiente approssimato)
+    # 2 step: calcolo del gradiente numerico
     # bisogna iterare solo sui tensor che chiedono il grad
     for name, param in layer.parameters(with_names=True):
         analytical_grads.append(param.grad)
@@ -64,8 +64,9 @@ def check_gradient(layer: nn.Module, inputs: tuple[Tensor], eps=1e-7, tolerance=
                 out1 = layer(*inputs).sum()
                 x[...] -= 2*eps
                 out2 = layer(*inputs).sum()
-                delta = (out1 - out2).data
+
                 # ∂f/∂θₙ = ( f(x)_θₙ⁺ - f(x)_θₙ⁻ ) / 2*eps
+                delta = (out1 - out2).data
                 approx_grad.append( delta / (2 * eps) )
                 x[...] += eps  # ripristino il valore originale
 

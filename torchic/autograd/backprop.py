@@ -146,8 +146,10 @@ def backpropagation(tensor, grad, stream=None, event=None, using_cuda=True) -> N
                 grad_x, grad_y = grad_fn(grad)
 
                 # if not tensor._retain_graph/CONFIG["retain_graph"]:
-                tensor.grad_fn = None
+                #tensor.grad_fn = None
+                tensor._grad_fn = None
 
+                # ==== GRADIENTS UPDATE ====
                 # se x ha richiesto il gradiente
                 if grad_x is not None:
                     # mi assicuro che grad e tensor abbiano lo stesso dtype

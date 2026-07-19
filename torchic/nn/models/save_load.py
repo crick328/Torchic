@@ -153,7 +153,7 @@ def load_parameters(model: nn.Sequential, filename: str, _debug: bool=False) -> 
                 )
             param.data = model_state_dict[name]
             # per evitare incongruenze tra .device e type(.data)
-            param.to(param.device)
+            param.to(param.device, inplace=True)
         except KeyError as e:
             if _debug:
                 print(

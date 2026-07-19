@@ -205,7 +205,7 @@ def auto_eval(model, eval_data: list[Tensor], eval_labels: list[Tensor]):
 
 def norm_and_flatten_images(images, device: str=None) -> list[Tensor]:
     output = []
-    device = CONFIG["device"] if not device else device
+    device = CONFIG["default_device"] if not device else device
 
     for image in images:
         output.append(Tensor(image.flatten()/255, device=device))
@@ -215,7 +215,7 @@ def norm_and_flatten_images(images, device: str=None) -> list[Tensor]:
 def labels_to_OHE(labels: Tensor, device: str=None) -> list[Tensor]:
     CLASSES = get_classes(labels)
     OHE_DICT = create_ohe_table(CLASSES)
-    device = CONFIG["device"] if not device else device
+    device = CONFIG["default_device"] if not device else device
 
     output = []
     labels = labels.data

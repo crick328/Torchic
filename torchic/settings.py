@@ -6,7 +6,19 @@ try:
     import cupy as cp
     CUPY_AVAILABLE = True
 except ImportError:
+    # creo un oggetto dummy in modo che appena viene chiamato un
+    # _device.funzione(), salta in aria tutto.
+    # E' l'unica idea che mi e' venuta per gestire l'accesso 
+    # a DEVICE_MAP["cuda"] senza cuda
+    
+    class NoCuPyExceptionRaiser:
+        __slots__ = ()
+        # blocca qualsiasi accesso a proprietà, variabili e metodi
+        def __getattribute__(self, name):
+            raise RuntimeError("CuPy is not available. Install it to use CUDA features.")
+    
     CUPY_AVAILABLE = False
+
 
 try:
     import matplotlib
@@ -16,8 +28,26 @@ except ImportError:
     VISUAL_AVAILABLE = False
 
 
+try:
+    import ml_dtypes
+
+    bfloat16 = cp.float16
+    if CUPY_AVAILABLE:
+        bfloat16 = cp.dtype('bfloat16')
+        BRAIN_FLOAT_AVAILABLE = True
+    else:
+        BRAIN_FLOAT_AVAILABLE = False
+except TypeError:
+    BRAIN_FLOAT_AVAILABLE = False
+    warnings.warn(
+        "CuPy didn't recognize bfloat16. Be sure to be using CuPy v14+."
+        "Install/update it with 'pip install cupy-cuda12x' (without doing"
+        "'pip install cupy' because they go in conflict)"
+        )
+
+
 CONFIG = {
-    "device": "cpu",
+    "default_device": "cpu",
     "precision": 32,
     "use_cuda_if_available": False,
     "seed": None,
@@ -29,7 +59,8 @@ CONFIG = {
     "grad_enabled": True,
     "mixed_precision": {
         "enabled": False,
-        "dtype": np.float16
+        "use_brain_float": BRAIN_FLOAT_AVAILABLE,
+        "dtype": bfloat16 if BRAIN_FLOAT_AVAILABLE else cp.float16
     }
 }
 # prendo anche qualcosa in piu' per ricordarmi che sono dati
@@ -46,6 +77,10 @@ DEVICE_SPECS = {
     "computeCapability": 0      # dato importante; racchiude le capacita' tecniche della scheda
     # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities
 }
+DEVICE_MAP = {
+    None: np if CONFIG["default_device"] == "cpu" else cp,
+    "cpu": np
+}
 
 
 if CUPY_AVAILABLE:
@@ -61,20 +96,28 @@ if CUPY_AVAILABLE:
                 DEVICE_SPECS[key] = specs[key]
 
         if CONFIG["use_cuda_if_available"]:
-            CONFIG["device"] = "cuda"
+            CONFIG["default_device"] = "cuda"
             print("GPU selected as default device.")
+
+        # aggiorno il dict dei devices
+        DEVICE_MAP["cuda"] = cp
     else:
         warnings.warn(
                 "CuPy is installed, but your GPU isn't cuda "
                 "capable or you are missing the cuda library. "
             )
-        CONFIG["device"] = "cpu"
+        CONFIG["default_device"] = "cpu"
+        DEVICE_MAP["cuda"] = NoCuPyExceptionRaiser()
+else:
+    DEVICE_MAP["cuda"] = NoCuPyExceptionRaiser()
+        
+
 
 def get_current_backend():
-    return cp if CONFIG["device"] == "cuda" else np
+    return cp if CONFIG["default_device"] == "cuda" else np
 
 def get_default_device() -> str:
-    return CONFIG["device"]
+    return CONFIG["default_device"]
 
 def get_default_precision() -> int:
     return CONFIG["precision"]
@@ -111,7 +154,7 @@ def set_default_device(device: str) -> None:
                 "process won't be fast. If you want to train and do not want to "
                 "check every given data, force a global device."
             )
-    CONFIG["device"] = device
+    CONFIG["default_device"] = device
 
 def set_default_precision(precision: int) -> None:
     if precision == 16 or precision == 32 or precision == 64:
@@ -170,11 +213,25 @@ def is_grad_enabled() -> bool:
 def set_grad_enabled(flag: bool) -> None:
     CONFIG["grad_enabled"] = flag
 
+
+
 # ==== Mixed precision settings ====
-def set_mixed_precision_dtype(dtype: cp.float16) -> None:
+def use_brain_float(flag: bool) -> None:
+    if BRAIN_FLOAT_AVAILABLE:
+        CONFIG["mixed_precision"]["use_brain_float"] = flag
+        CONFIG["mixed_precision"]["dtype"] = bfloat16 if flag else cp.float16
+    else:
+        warnings.warn(
+            "You called 'use_brain_float()', but bfloat16 isn't"
+            "available (probably for your current CuPy's version)."
+            "This call will be ignored."
+        )
+        
+
+def set_mixed_precision_dtype(dtype: cp.dtype) -> None:
     CONFIG["mixed_precision"]["dtype"] = dtype
 
-def get_mixed_precision_dtype() -> None:
+def get_mixed_precision_dtype() -> cp.dtype:
     return CONFIG["mixed_precision"]["dtype"]
 
 def is_mixed_precision_enabled() -> bool:

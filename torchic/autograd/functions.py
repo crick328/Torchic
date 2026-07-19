@@ -8,6 +8,7 @@ from torchic.settings import CUPY_AVAILABLE, CONFIG
 if CUPY_AVAILABLE:
     import cupy as cp
 import random
+import numpy as np
 
 # RULES OF THUMB:
 # 1) i parent devono sempre occupare i primi due posti in ctx (per backpropagation)
@@ -199,17 +200,45 @@ class BackwardFunction:
     
 
 
-def register_backward_if_needed(inputs: tuple['Tensor'],
-                                output: 'Tensor',
+def register_backward_if_needed(output: 'Tensor',
                                 grad_fn: BackwardFunction) -> None:
-    #parent1, parent2 = inputs
-    #if CONFIG["grad_enabled"] and (parent1.requires_grad or parent2.requires_grad if parent2 is not None else False):
-    # len() a time complexity di O(1)
-    #if CONFIG["grad_enabled"] and (inputs[0].requires_grad or (inputs[1].requires_grad if len(inputs) > 1 else False)):
+    '''
+    Function that registers the backward function if some conditions are met, such as
+    autograd is on and at least one parent requires grad.
+    Args:
+        output (Tensor): result of the operation
+        grad_fn (BackwardFunction): instance of the backward function to register (which
+           already has received the parents as args) 
+    '''
+    if not CONFIG["grad_enabled"]:
+        return
+    #if grad_fn is not None:
     parent1, parent2 = grad_fn.parents()
-    if CONFIG["grad_enabled"] and (parent1.requires_grad or (parent2.requires_grad if parent2 is not None else False)):
-        output.grad_fn = grad_fn
+    #else:
+        #raise RuntimeError(
+            #"Mi stai chiedendo di sovrascrivere una grad function non nulla "
+            #"con un valore nullo... Perche'?"
+            #)
 
+    
+    #print(f"PRINT IF: {CONFIG['grad_enabled']} and {parent1.requires_grad} or {parent2.requires_grad if parent2 is not None else False}, che fa {CONFIG['grad_enabled'] and (parent1.requires_grad or (parent2.requires_grad if parent2 is not None else False))}")
+    # if autograd is on and at least one of the two parents (if there are two) requires grad
+    #if CONFIG["grad_enabled"] and
+    if parent1._requires_grad or (parent2._requires_grad if parent2 is not None else False):
+        if output._grad_fn is None:
+            # aggiornato a False perché si assegna una grad_fn
+            output._is_leaf = False
+            # da qua in avanti, requires_grad non sarà più modificabile perché
+            # non è più considerato leaf tensor
+            output._requires_grad = True
+            # assegno la grad_fn
+            output._grad_fn = grad_fn
+        else:
+            raise RuntimeError(
+                "Mi stai chiedendo di sovrascrivere una grad function non nulla "
+                "con un valore non nullo, ma questo romperebbe la backpropagation."
+                )
+        
 
 
 # Ordine alfabetico
@@ -405,6 +434,14 @@ class MatmulBackward(BackwardFunction):
         y: "Tensor"     # tensor di shape (k, n)
         x, y = self.ctx
         grad_x, grad_y = None, None
+
+        #assert cr_grad.flags['C_CONTIGUOUS'] Fallisce
+        # Penso che numpy/cupy ci pensi in automatico, ma e'
+        # bene fare un gesto esplicito
+        #if not cr_grad.flags['C_CONTIGUOUS']:
+        #   cr_grad = x._device.ascontiguousarray(cr_grad)
+        # NOTE: se vuoi metterci mani, fallo nella logica centralizzata,
+        # ovvero in backpropagation()!
         
         # Gradiente rispetto ad x
         if x.requires_grad:
@@ -433,6 +470,10 @@ class MatmulBackward(BackwardFunction):
             # Riduco grad_y se necessario
             if grad_y.shape != y.data.shape:
                 grad_y = grad_y.sum(axis=tuple(range(grad_y.ndim - y.data.ndim)))
+
+        #assert cr_grad.flags['C_CONTIGUOUS'] Fallisce ancora
+        #assert grad_x.flags['C_CONTIGUOUS'] Non fallisce mai: i risultati
+        # vengono giustamente messi in array contigui
 
         return grad_x, grad_y
 
@@ -512,6 +553,7 @@ class MulBackward(BackwardFunction):
 
         return grad_x, grad_y
 
+
 class NegBackward(BackwardFunction):
     def __call__(self, cr_grad: ArrayType) -> None:
         x: "Tensor"
@@ -531,6 +573,22 @@ class NLLLossBackward(BackwardFunction):
         # d/dx(y*log(x + eps)) = y * d/dx(log(x + eps)) = y * 1/(x + eps)
         cr_grad *= -target.data/(x.data + eps)
         return cr_grad, None
+
+
+class PermuteBackward(BackwardFunction):
+     def __call__(self, cr_grad: ArrayType) -> None:
+        x: "Tensor"
+        dims: tuple[int]
+        x, dims = self.ctx
+
+        # proprietà permutazioni: l'ordinamento degli indici di una permutazione
+        # genera esattamente la sua permutazione inversa
+        # => argsort: ordina l'array e ti restituisce in output l'array ordinato,
+        # ma al posto degli elementi hai il loro index originale
+        # NOTE: non ha senso fare operazioni come queste su GPU!
+        inv_dims = np.argsort(dims)
+        
+        return cr_grad.transpose(inv_dims), None
 
 
 class PowBackward(BackwardFunction):
@@ -695,6 +753,37 @@ class TanhBackward(BackwardFunction):
 
         cr_grad *= 1-tanh**2
         return cr_grad, None
+    
+
+class ToCopyBackward(BackwardFunction):
+    '''
+    This BackwardFunction is created only if .to() has
+    changed the Tensor's device and/or dtype.
+    Hence, the term "Copy" is used to highlight that
+    .to() needed to create another Tensor
+    '''
+    def __call__(self, cr_grad: ArrayType) -> None:
+        x: "Tensor"
+        device: str
+        dtype: type
+        x, device, dtype = self.ctx
+
+        # hai cambiato dtype ma non device
+        if dtype != x.dtype and device == x.device:
+            # caso di training
+            cr_grad = cr_grad.astype(x.dtype, copy=False)
+        # hai cambiato sicuramente il device e forse anche il dtype
+        else:
+            # a prescindere che tu mi chieda solo il cambio di
+            # device o sia cambio device che dtype, la funzione
+            # e' sempre questa
+
+            if CUPY_AVAILABLE and cr_grad.__class__ == cp.ndarray:
+                cr_grad = cr_grad.get()
+            cr_grad = x._device.asarray(cr_grad, dtype=x.dtype)
+        
+        return cr_grad, None
+
 
 
 class TransposeBackward(BackwardFunction):

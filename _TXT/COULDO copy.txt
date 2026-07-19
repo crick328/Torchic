@@ -1,0 +1,124 @@
+=> RULE OF THUMB: se devi solo fare operazioni sui .data e non ti serve la
+   backprop, chiama solo quelli anziché tirare sempre in ballo i Tensor!
+=> RULE OF THUMB: tutti gli array usati ni forward devono essere tensori.
+   Perché? Perché anche se non richiedono gradient e non sono utili per il
+   crt, devono comunque essere sullo stesso device!
+
+
+
+
+
+implementa cifar-10 e fai test con e senza bias per vedere differenze
+
+Crea una funzione per salvare i checkpoint in base alla metrica scelta
+(basta salvarsi i dati del modello migliore e sovrascrivere se il current è migliore)
+
+Tokenizer da finire di implementare per word embedding per processing esami
+
+Aggiornare le backward delle loss fn al nuovo paradigma
+
+bisogna creare la modalita' di train ed eval nei modelli (model.train(), model.eval())
+
+(transformers) Aggiustare tutti i cast stupidi a Tensor
+
+(transformers) Ottimizzare
+
+Commenta bene tutto il transformer e spamma di docstring
+
+Sfruttare l'ereditarieta' dove e' necessario e aggiornare al nuovo paradgima di
+backwards (activation functions, layers)
+
+agiustare draw_graph per fare in modo che funzioni con modelli complessi
+che hanno altre classi come attributo (qua ti servira' tanto l'ereditarieta' credo)
+IDEA: sarebbe molto figo sfruttare il group by tirato fuori da ChatGPT per raggruppare
+i parametri di uno stesso nested Module (ad esempio raggruppare tutti i backward
+degli embedding)
+
+scrivere bene e commentare tutto il codice di graphs.py
+
+adattati di piu' alla nomenclatura di torch (ad esempio con shape)
+
+raggruppa le magic functions
+
+
+Unisci bene tutta la parte dei dataset e cerca di creare una forma comunque
+sia a quella del transformer che al tuo di mnist
+
+Il prossimo step è integrare il package Transformer nella libreria,
+rifinire il suo codice e tutto ciò che riguarda gli aggiornamenti fatti.
+
+Forse prima di tutto bisogna assicurarsi che si possa salvare e caricare
+il Transformer per poi integrare subito la logica nel training. 
+A proposito, aggiungi supporto al print e al repr ai layer del Transformer
+
+In più bisognerebbe alleggerire la backward del transformer
+
+Controlla se effettivamente si resetta il count della classe
+BackwardFunction quando riparte la backprop (c'e' un modo migliore
+per resettare?)
+
+c'e' un modo per rivedere la sintassi di _device? Non e' molto carina...
+
+
+bisogna pulire e rifinire i commenti nel transformer
+
+introduci cp.is_available()
+
+bisogna rivedere il modo in cui il linear prende le initialization funct
+
+Grad-CAM e saliency map (non so se sono la stessa cosa, ma sembrano simili)
+
+ci vogliono delle docstring nelle singole backward per spiegare, grossomodo,
+la matematica che c'e' dietro/ come ragiona la funzione
+
+Implementa lo stack di funzioni dei modulelist
+
+
+IL BATCHING E' IMPLEMENTATO IN MODO NAIVE! Dovresti manipolare i tensori per creare una
+batch dim, proprio come nel transformer! Magari correggi in un train_test_v2.py
+
+
+Bisogna ottimizzare parecchio la MHA e la sua backprop soprattutto con
+PARALLELIZZAZIONE in forward e in backward. Approfittane per
+riorganizzare i commenti nel transformer.
+In generale, non guardare solo alla backprop, anzi, guardara soprattutto
+altrove se sei alla ricerca di ottimizzazioni!
+
+Voglio lavorare anche sulla rete neurale di scacchi! O creo l'ambiente o
+uso quello di gym, basta che il resto possa farlo con la mia libreria in RL
+
+Sono abbastanza sicuro che puoi organizzare ed automatizzare bene tutti i test
+seguendo una convenzione di python. E' un'ottima occasione per fare ordine ed
+eliminare cio' che non e' piu' necessario, oltre che facilitare la vita
+con i test automatici
+
+pytorch ha .shape come property, non come funzione
+
+posso pensare ad un sistema che, al secondo backward pass, guarda i dati
+del grafo in cache e valuta se non runnare un ramo perche' il prossimo
+e' piu' worth
+
+Andare multi-gpu
+
+- model arena: scrivi una ventina di frasi di tuo pugno, prendi un set di modelli e vedi chi totalizza un bleu medio superiore 
+- no grad
+- riorganizzare file Kaggle
+- fase 2: miglioramento calcolo loss (si vedrà con il Transformer decoder only)
+- cercare informazioni su Transformer decoder only (metodo di training efficiente, architettura, rifiniture)
+- sfrutta gpt per integrare il dataset! Servono info su AI
+- nota: quando creerai il super dataset, annotati le distribuzioni (40% neural cloud, 20% steins gate, ecc.)
+- (sfizio) real-time visualization delle connessioni tra i neuroni. Classica rappresentazione usata per mnist e nel RL
+- organizza e dividi il codice del transformer
+
+
+LIBRERIE
+cupy-cuda12x==13.0.0    (pip install cupy-cuda12x) 
+numpy==1.26.2
+? pypiwin32==223
+? pywin32==306
+snakeviz==2.2.0
+typing_extensions==4.9.0
+graphviz-0.20.3
+https://forum.graphviz.org/t/new-simplified-installation-procedure-on-windows/224
+pip install kaggle
+safetensors-0.4.3

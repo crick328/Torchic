@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
 from torchic.nn.models.save_load import load_architecture
 from torchic.data.dataloaders.transformer_dataset import causal_mask
 from torchic import Tensor
@@ -14,7 +14,7 @@ SEQ_LEN = 320
 # se vuoi testare un modello specifico, metti il nome e verra'
 # runnato solo quello
 MODEL_NAME = "transformer_6"
-test_sentence = "Hi my name is Rintaro"
+test_sentence = "My god I ejaculated"
 tokenizer_en = Tokenizer.from_file("tokenizer_en.json")
 tokenizer_it = Tokenizer.from_file("tokenizer_it.json")
 sos_token = Tensor([tokenizer_en.token_to_id("[SOS]")])

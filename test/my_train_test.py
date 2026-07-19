@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(1, r"C:\Users\admin\Desktop\NN Lab\Projects\Torchic\Torchic 3.0 Beta")
+sys.path.insert(1, r"C:\Users\admin\Desktop\NN Lab\Projects\Torchic\Torchic 3.1")
 from torchic import nn
 from torchic.data.dataloaders.my_mnist import AutoMnist
 from torchic.tools.training import metrics
@@ -80,6 +80,8 @@ model = nn.Sequential(
 
 #print(list(model.parameters()))
 
+
+
 #model.to(DEVICE)
 
 loss_fn = nn.MSELoss()
@@ -123,7 +125,6 @@ else:
                 loss = loss.mean()
                 #draw_graph(predicted)
                 #print(branch_time_estimator(loss))
-                #exit()
                 loss.backward()
 
                 optimizer.step()
@@ -163,7 +164,7 @@ if PROFILER:
 
     subprocess.run(["snakeviz", "profiler_data2.prof"])
 
-save(model, optim=None, filename="cazzogigante")
-model = load_architecture("cazzogigante")
+#save(model, optim=None, filename="cazzogigante")
+#model = load_architecture("cazzogigante")
 
 metrics.auto_eval(model, test_images, test_labels)

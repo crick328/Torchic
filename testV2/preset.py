@@ -1,6 +1,6 @@
 import sys
 import torch
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.1")
 import torchic
 from torchic.tools.code_analysis.gradient_checking import check_gradient
 from torchic.tools.visualization.graphs import draw_graph
@@ -10,6 +10,9 @@ torchic.set_default_precision(64)
 
 
 def compare_tensors(torch_t: torch.Tensor, my_t: torchic.Tensor, _curr_idx: int=None):
+    '''
+    Compares shape, type, values, internal status (.requires_grad, .is_leaf) and grad
+    '''
     assert torch_t.shape == my_t.shape(), f"Mismatch in shape of index {_curr_idx}.\n Torch: {torch_t.shape},\nTorchic: {my_t.shape()}"
     assert torch_t.detach().numpy().dtype == my_t.dtype, f"Mismatch in dtype of index {_curr_idx}.\n Torch: {torch_t.numpy().dtype},\nTorchic: {my_t.dtype}"
     assert torch.allclose(torch.tensor(my_t.data), torch_t), f"Mismatch in data of index {_curr_idx}.\n Torch: {torch_t},\nTorchic: {my_t}"
@@ -22,6 +25,9 @@ def compare_tensors(torch_t: torch.Tensor, my_t: torchic.Tensor, _curr_idx: int=
         else:
             assert my_t.grad is None, f"Gradient is not None in index {_curr_idx}.\n Torch: {torch_t.grad},\nTorchic: {my_t.grad}"
         assert torch.allclose(torch.tensor(my_t.grad), torch_t.grad), f"Mismatch in grad of index {_curr_idx}.\n Torch: {torch_t.grad},\nTorchic: {my_t.grad}"
+        
+        #assert my_t.data.c_contiguous
+        #assert my_t.grad.data.c_contiguous
 
 
 def compare_modules(torch_module, my_module, transpose=True):
@@ -123,6 +129,9 @@ def get_class_instances(cls_name: str, kwargs):
 
 
 def backward_and_compare(torch_tensors: list, my_tensors: list, show_graph: bool=False):
+    '''
+    Takes two LISTS of tensors, computes the gradients and compares them
+    '''
     torch_root = torch_tensors[0]
     my_root = my_tensors[0]
 

@@ -25,7 +25,7 @@ CONTROLLA LE INIT RICHESTE DAI SINGOLI LAYER
 
 from torchic.cuda_tensor import Tensor
 #from torchic import nn
-from torchic.tools.helpers import zeros, chunk, ones, arange, log, sin, cos
+from torchic.tools.helpers import zeros, ones, arange, log, sin, cos #, chunk
 from torchic.nn.module import Module, ModuleList
 from torchic.nn.models.sequential import Sequential
 from torchic.nn.activations import ReLU, Softmax
@@ -235,7 +235,7 @@ class MultiHeadAttention(Module):
     '''
     __slots__ = (
         "head_num", "k_dim", "v_dim",
-        "d_model", "head_dim_sqrt",
+        "d_model", "head_dim", "head_dim_sqrt",
         "query_layer", "key_layer", "value_layer",
         "output_layer", "dropout", "softmax",
         "qkv_layer", "_qkv_fused", "clip",
@@ -250,10 +250,10 @@ class MultiHeadAttention(Module):
         
         # dimensione della frammentazione dei singoli embeddings 
         self.head_num = head_num                       # h
-        #self.head_dim = Tensor(d_model // head_num)   # d_k
+        self.head_dim = d_model // head_num   # d_k
         # per evitare computazioni inutili ad ogni forward
-        self.d_model = d_model
         self.head_dim_sqrt = Tensor(d_model // head_num).sqrt()   # d_k, ma sotto radice
+        self.d_model = d_model
         self.clip = clip
         self.save_attn_weights = save_attn_weights
 
@@ -353,11 +353,24 @@ class MultiHeadAttention(Module):
                 qkv = self.qkv_layer(q)
                 # (batch x seq_len x 3*d_model) -> (batch x head_num x seq_len x 3*head_dim)
                 #qkv = self.split(qkv)
-                # (batch x head_num x seq_len x 3*head_dim) -> 3*(batch x head_num x seq_len x head_dim)
+
+                
                 #q, k, v = chunk(qkv, 3, dim=-1)
 
-                # (batch, seq_len, 3*d_model) -> 3*(batch, seq_len, d_model)
-                q, k, v = chunk(qkv, 3, dim=-1)
+
+                batch, seq_len = qkv.data.shape[0], qkv.data.shape[1]
+
+                # separo il qkv e faccio anche il passaggio da d_model a sottovettori
+                # (batch, seq_len, 3*d_model) -> (batch, seq_len, 3, head_num, head_dim)
+                qkv = qkv.view(batch, seq_len, 3, self.head_num, self.head_dim)
+                # (batch, seq_len, 3, head_num, head_dim) -> (3, batch, head_num, seq_len, head_dim)
+                qkv = qkv.permute(2, 0, 3, 1, 4)
+
+                # chiedo la contiguita' per velocita' delle operazioni.
+                # La chiedo separatamente per avere piu' chance di avere blocchi
+                # di memoria disponibili (anziche' il mega blocco contiguo che
+                # sarebbe richiesto da qkv) perche' .contiguous crea una copia in memoria
+                q, k, v = qkv[0].contiguous(), qkv[1].contiguous(), qkv[2].contiguous()
 
             elif q is not k and k is v:
                 # encoder-decoder attention
@@ -375,9 +388,16 @@ class MultiHeadAttention(Module):
                 else:
                     q = q.matmul(W_q)
                     kv = v.matmul(W_kv)
-                
-                # (batch, seq_len, 2*d_model) -> 2*(batch, seq_len, d_model)
-                k, v = chunk(kv, 2, dim=-1)
+
+                # prendo le prime due dimensioni
+                batch, seq_len_kv = kv.data.shape[0], kv.data.shape[1]
+                # (batch, seq_len, 2*d_model) -> (batch, seq_len, 2, head_num, head_dim)
+                kv = kv.view(batch, seq_len_kv, 2, self.head_num, self.head_dim)
+                # (batch, seq_len, 2, head_num, head_dim) -> (2, batch, head_num, seq_len, head_dim)
+                kv = kv.permute(2, 0, 3, 1, 4)
+
+                k, v = kv[0].contiguous(), kv[1].contiguous()
+                q = self.split(q)
             else:
                 warnings.warn(
                     "La MHA e' configurata per avere un'unica matrice fusa Wqkv, ma "
@@ -409,12 +429,12 @@ class MultiHeadAttention(Module):
             k = self.key_layer(k)   # K'
             v = self.value_layer(v) # V'
         
-        # Ogni head riceverà un vettore del tipo (batch x 1 x seq_len x head_dim) 
-        # in modo che si concentrino su una parte diversa dell'embedding
-        # (batch x seq_len x d_model) -> (batch x seq_len x head_num x head_dim) -> .T(1, 2) -> (batch x head_num x seq_len x head_dim)
-        q = self.split(q)
-        k = self.split(k)
-        v = self.split(v)
+            # Ogni head riceverà un vettore del tipo (batch x 1 x seq_len x head_dim) 
+            # in modo che si concentrino su una parte diversa dell'embedding
+            # (batch x seq_len x d_model) -> (batch x seq_len x head_num x head_dim) -> .T(1, 2) -> (batch x head_num x seq_len x head_dim)
+            q = self.split(q)
+            k = self.split(k)
+            v = self.split(v)
         
         x = self.attention(q, k, v, mask)
         # rimetto seq_len al suo posto, ovvero passo da
@@ -439,11 +459,10 @@ class MultiHeadAttention(Module):
         # le reference by . sono nemiche delle performance e i metodi
         # performano meglio se usano variabili dichiarate al loro interno.
         # E' una doppia ottimizzazione e il codice diventa molto piu' chiaro!
-        batch_size, seq_len, d_model = tensor.data.shape
+        batch_size, seq_len, _d_model = tensor.data.shape
         # d_tensor e' head_dim
-        head_dim = d_model // self.head_num
         
-        return tensor.view(batch_size, seq_len, self.head_num, head_dim).transpose(1, 2).contiguous()
+        return tensor.view(batch_size, seq_len, self.head_num, self.head_dim).transpose(1, 2).contiguous()
     
     def concat(self, tensor: Tensor) -> Tensor:
         """

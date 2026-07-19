@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.1")
 from torchic import set_default_device, set_default_precision
 # CUDA settings
 from torchic import set_max_async_streams, set_time_threshold_ms, set_use_null
@@ -414,7 +414,7 @@ def train_model(model_config):
         # fai che splittare in path e filename
         #model, optimizer = load_checkpoint(r"C:\Users\admin\Desktop\NN Lab\Projects\Torchic\Model zoo\25_11_2024\checkpoint_e1")
 
-    print(model.number_of_params())
+    print(f"Number of params: {model.number_of_params()}\n")
 
     
     for epoch in range(initial_epoch, model_config["num_epochs"]):
@@ -433,6 +433,7 @@ def train_model(model_config):
             encoder_input = batch["encoder_input"] # (batch, seq_len)
             # frase target
             decoder_input = batch["decoder_input"] # (batch, seq_len)
+            
             # NOTE: le seconde dim delle maschere sono per il broadcast
             # a num_heads. Entrambe le mask sarano broadcastate
             # a (batch, num_heads, seq_len, seq_len)
@@ -456,6 +457,7 @@ def train_model(model_config):
             # (batch, seq_len, trg_vocab_size) -> (batch * seq_len, trg_vocab_size)
             # in entrambi i tensor moltiplico le dimensioni di batch e seq_len
             loss = loss_fn(prediction.view(-1, tokenizer_trg.get_vocab_size()), target.view(-1))
+            #print(loss, loss.dtype)
             batch_iterator.set_postfix({"loss": f"{loss.data : 6.3f}"})
 
             #draw_graph(prediction, format="svg")#, complete_format=False)

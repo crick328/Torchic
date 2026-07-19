@@ -1,8 +1,9 @@
 from torchic.cuda_tensor import Tensor
-from torchic.autograd.functions import EmbeddingBackward
+from torchic.autograd.functions import register_backward_if_needed, EmbeddingBackward
 import torchic.nn.initializers as inits
 from torchic.nn.module import Module
 from torchic.tools.helpers import zeros
+from torchic.autograd.grad_context import no_grad
 
 
 # Linear Layer (corrisponde al Dense layer di Tensorflow se quest'ultimo è settato con activation=None)
@@ -97,15 +98,22 @@ class Embedding(Linear):
         Returns:
             Tensor of shape (N, embedding_size)
         '''
-        # NOTE: sarebbe carino trovare un modo per dire che solo questa op
-        # non deve generare backward, tipo torch.no_grad()
-        output = self.weights[x.data]
+        # NOTE: potrei usaree torch.no_grad(), ma ha solo piu' overhead.
+        # Usando .data sono in linea con le intenzioni (non voglio backward)
+        # e posso dare la mia
+        #with no_grad():
+        #   output = self.weights[x.data]
+        output = Tensor(self.weights.data[x.data])
 
-        # x non puo' richiedere il grad perche' deve essere un intero
-        if self.weights.requires_grad:
+        # NOTE: non riesco ad implementarla in modo pulito. Aggiunge
+        # la grad_fn solamente se hai parents 
+        register_backward_if_needed(output, EmbeddingBackward(x, self.weights))
+
+        # x non puo' richiedere il grad perche' e' un tensore di interi
+        #if self.weights.requires_grad:
             # rimuovo IndexBackward, che in questo caso non serve
-            output._grad_fn = None
-            output.grad_fn = EmbeddingBackward(x, self.weights)
+            #output._grad_fn = None
+            #output.grad_fn = EmbeddingBackward(x, self.weights)
         return output
     
 

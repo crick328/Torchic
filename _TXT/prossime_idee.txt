@@ -28,11 +28,11 @@ Fase 1:
 - visualizzazione embeddings
 ✓ convertire la classe Transformer come child di Module (TransformerV2)
 - e' vero che talvolta conviene ricalcolare le attivazioni piuttosto che salvarle
-  per la backward?
+  per la backward? => Implementa gradient checkpointing
 - conviene salvarsi le activation functions per la backward o ricalcolarle in bw
   per risparmiare memoria?
 Fase 2:
-- implementare nuove act funct
+- implementare nuove act funct (Llama 3.1 usa swiGLU);
 - introdurre beam search e altri algoritmi per prendere il prossimo token
 - iniziare ad apportare migliorie all'architettura per orientarlo verso un
   Transformer++ decoder-only;
@@ -44,6 +44,7 @@ Fase 2:
 - iniziare a mettere da parte un dataset buono;
 - iniziare ad implementare un tokenizer SOTA (TikToken?)
 - fare training di test;
+- "needle in a haystack" benchmark;
 - implementare AdamW/Lion (piu' leggero di Adam) o AdaFactor
 - implementa la curva della scaling law per vedere come si comporta il tuo modello
 - cos'e' la grouped multi query attention con caching qk o kv? Vale la pena implementarla?

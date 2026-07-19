@@ -24,7 +24,8 @@ def greedy_decode(model, source, source_mask, tokenizer_tgt, max_len, use_dec_ma
     # iterazione dal decoder. La batch_size e' 1 per definizione, mentre
     # la seq_len e' la dimensione in cui aggiungo tokens
     decoder_input = Tensor([[sos_idx]])
-    decoder_input.data = Tensor._to_dtype(decoder_input.data, source.dtype)
+    #decoder_input.data = Tensor._to_dtype(decoder_input.data, source.dtype)
+    decoder_input = decoder_input.to(source.dtype)
 
     # do-while
     while True:
@@ -32,7 +33,8 @@ def greedy_decode(model, source, source_mask, tokenizer_tgt, max_len, use_dec_ma
         # token "futuri" (senza mask, )
         if use_dec_mask:
             decoder_mask = Tensor(causal_mask(decoder_input, 1))
-            decoder_mask.data = Tensor._to_dtype(decoder_mask.data, source_mask.dtype)
+            #decoder_mask.data = Tensor._to_dtype(decoder_mask.data, source_mask.dtype)
+            decoder_mask = decoder_mask.to(source_mask.dtype)
         else:
             decoder_mask = None
 

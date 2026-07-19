@@ -1,9 +1,9 @@
 from preset import torchic, compare_tensors, create_random_tensors, backward_and_compare, test_tensor_function
-from torchic.tools.helpers import chunk
+#from torchic.tools.helpers import chunk
 import torch
 
 
-
+'''
 # ==== CHUNK ====
 print("testing chunk...")
 NUM_CHUNKS = 2
@@ -17,7 +17,8 @@ for dim in range(0, 3):
         [*torch_res, torch_t],
         [*my_res, my_t]
     )
-
+'''
+    
 
 # ==== CLAMP ====
 print("Testing clamp...")
@@ -108,6 +109,20 @@ backward_and_compare(
     )
 print("Done.")
 
+
+
+# ==== PERMUTE ====
+print("Testing permute...")
+torch_t, my_t = create_random_tensors((2,3,4,5))
+
+torch_res = torch_t.permute(0,3,1,2)
+my_res = my_t.permute(0,3,1,2)
+
+backward_and_compare(
+    [torch_res, torch_t],
+    [my_res, my_t]
+    )
+print("Done.")
 
 
 # ===== POW =====

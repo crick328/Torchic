@@ -8,6 +8,17 @@ import inspect
 
 # Metaclass che forza l'uso di __slots__ e li estende automaticamente
 class ForceSlots(type):
+    '''
+    __slots__ are a powerful way to reduce object's memory footprint and improve
+    attributes access time. The downside is that **they are not passed by
+    inheritance**.
+    For example, if I define class Linear(Module), even if Module has __slots__,
+    Linear wouldn't.
+    
+    This class fixes it.
+    I force the __slots__ on the child by intercepting the creation of the instance
+    and putting the slots  
+    '''
     # Aggiunge '_init_params' agli __slots__ esistenti, se presenti
     def __new__(cls, name, bases, classdict):
         # prendo gli slots della classe che sto istanziando e aggiungo _init_params
@@ -96,7 +107,7 @@ class Module(metaclass=ForceSlots):
 
     def to(self, *args) -> None:
         for param in self.parameters(trainable_only=False):
-            param.to(*args)
+            param.to(*args, inplace=True)
 
     def train(self) -> None:
         self._set_training_mode(True)

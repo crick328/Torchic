@@ -1,9 +1,10 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.1")
 from torchic.data.dataloaders.my_mnist import AutoMnist
 import time
 import random
 from torch import nn, optim, tensor
+
 
 
 # https://ml4a.github.io/ml4a/looking_inside_neural_nets/

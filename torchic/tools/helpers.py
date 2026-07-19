@@ -69,8 +69,10 @@ def cat(tensor_list: list[Tensor], dim: int=0, device=None, dtype=None) -> Tenso
     # alcune volte da' errore se uso le tonde per il generatore...
     return Tensor(backend.concatenate([t.data for t in tensor_list], axis=dim), device=device, dtype=dtype)
 
+# operazione che pare essere ok, ma da verificare se e' allineata
+# con PyTorch, deve avere una backward e ha i for (si puo' migliorare?)
 # --!-- Operazione differenziabile --!--
-def chunk(tensor: Tensor, num_chunks: int, dim=0) -> list['Tensor']:
+def __chunk(tensor: Tensor, num_chunks: int, dim=0) -> list['Tensor']:
         '''
         Tries to divide self in `num_chunks`. If the split cannot
         be exact, the first `total_length % num_chunks` sub-`Tensor`s

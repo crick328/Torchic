@@ -152,7 +152,7 @@ def inference(text: str):
 
 
 
-full_dataset = pd.read_csv(r'C:\Users\admin\Desktop\NN Lab\Projects\Torchic\Torchic 3.0 Beta\torchic\datas\SG_en-it\SG_transaltion_dataset.csv', sep='|', header=0, index_col=False).values
+full_dataset = pd.read_csv(r'C:\Users\admin\Desktop\NN Lab\Projects\Torchic\Torchic 3.1\torchic\datas\SG_en-it\SG_transaltion_dataset.csv', sep='|', header=0, index_col=False).values
 # (ds_len, cols) -> (ds_len, 1), (ds_len, 1) 
 names, en_sentences, it_sentences = np.split(full_dataset, 3, axis=-1)
 
