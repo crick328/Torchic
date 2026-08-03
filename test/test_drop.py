@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.2")
 import torchic
 import numpy as np
 

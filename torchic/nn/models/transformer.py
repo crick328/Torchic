@@ -246,7 +246,7 @@ class MultiHeadAttention(Module):
                  v_dim: int=None, bias=True, clip: bool=True, allow_fusion: bool=False,
                  save_attn_weights: bool=False):
         if d_model % head_num != 0:
-            ValueError(f"Cannot divide evenly d_model of {d_model} times h {head_num} head attentions") 
+            raise ValueError(f"Cannot divide evenly d_model of {d_model} times h {head_num} head attentions") 
         
         # dimensione della frammentazione dei singoli embeddings 
         self.head_num = head_num                       # h
@@ -315,7 +315,7 @@ class MultiHeadAttention(Module):
             # setto a min_value/max_value i valori fuori
             # dall'intervallo [min_value, max_value] per
             # stabilita' numerica
-            attn_weights = attn_weights.clamp(-10, 10)
+            attn_weights = attn_weights.clamp_(-10, 10)
 
         if mask is not None:
             # NOTE: perche' si maschera con -inf prima della softmax
@@ -325,7 +325,7 @@ class MultiHeadAttention(Module):
             # NOTE: PyTorch fa semplicemente mask*float("-inf") e altro
             # NOTE: torch semplicemente accetta entrambe le maschere. Per una
             # usa masked_fill_(), per l'altra += float_mask
-            attn_weights = attn_weights.masked_fill(mask==False, float('-inf'))
+            attn_weights = attn_weights.masked_fill_(mask==False, float('-inf'))
             # ho usato questo per il training del 20/12
             #attn_weights = attn_weights.masked_fill(mask==False, -1e9)
 
@@ -352,12 +352,6 @@ class MultiHeadAttention(Module):
                 # self-attention
                 qkv = self.qkv_layer(q)
                 # (batch x seq_len x 3*d_model) -> (batch x head_num x seq_len x 3*head_dim)
-                #qkv = self.split(qkv)
-
-                
-                #q, k, v = chunk(qkv, 3, dim=-1)
-
-
                 batch, seq_len = qkv.data.shape[0], qkv.data.shape[1]
 
                 # separo il qkv e faccio anche il passaggio da d_model a sottovettori

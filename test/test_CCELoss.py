@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.2")
 
 from torchic import Tensor, int64, nn, rand, randint, draw_graph
 import torch
@@ -16,6 +16,7 @@ TARGET_SHAPE = (20, )
 DEC_VOCAB_SIZE = 5
 
 
+
 my_ten = rand(INPUT_SHAPE, requires_grad=True)
 my_tar = randint(TARGET_SHAPE, high=DEC_VOCAB_SIZE)
 my_loss = nn.CrossEntropyLoss(reduction=REDUCTION, ignore_index=IGNORE_INDEX, label_smoothing=SMOOTH)
@@ -27,14 +28,17 @@ torch_loss = CrossEntropyLoss(reduction=REDUCTION, ignore_index=IGNORE_INDEX, la
 my_res = my_loss(my_ten, my_tar)
 tor_res = torch_loss(tor_ten, tor_tar)
 
-draw_graph(my_res)
+#draw_graph(my_res)
+print(my_res)
+print(tor_res)
 
 my_res.backward()
 tor_res.backward()
 
 
-print(my_res)
-print(tor_res)
+
 print("----")
-print(my_ten.grad)
-print(tor_ten.grad)
+print(my_ten.grad.sum())
+print(tor_ten.grad.sum())
+
+print(torch.allclose(tor_ten.grad, torch.tensor(my_ten.grad)))

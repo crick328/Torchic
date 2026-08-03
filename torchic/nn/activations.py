@@ -4,7 +4,6 @@
 
 from torchic.cuda_tensor import Tensor
 import torchic.autograd.functions as back_op
-from torchic.autograd.functions import register_backward_if_needed
 from torchic.amp import autocast_operation
 from torchic.nn.module import ForceSlots
 #import numpy as np
@@ -41,13 +40,9 @@ class Sigmoid(ActivationFunction):
     def __call__(self, x: Tensor) -> Tensor:
         sigmoid = Tensor(1/(1 + x._device.exp(-x.data)))
 
-        def _sigmoid_backward(cr_grad) -> None:
-            # d/dσ = σ(x) * (1 - σ(x)); dL/dσ = d/dσ * prodotto derivate parziali delle operazioni precedenti
-            x._run_backward( sigmoid.data * (1 - sigmoid.data) * cr_grad )
-
         # da qua in avanti, requires_grad non sarà più modificabile perché
         # non è più considerato leaf tensor
-        register_backward_if_needed(sigmoid, back_op.SigmoidBackward(x, sigmoid.data))
+        sigmoid.register_backward_if_needed(back_op.SigmoidBackward, x, sigmoid.data)
         return sigmoid
     
     def __repr__(self):
@@ -59,16 +54,20 @@ class Tanh(ActivationFunction):
     def __call__(self, x: Tensor) -> Tensor:
         tanh = Tensor(x._device.tanh(x.data))
 
-        register_backward_if_needed(tanh, back_op.TanhBackward(x, tanh.data))
+        tanh.register_backward_if_needed(back_op.TanhBackward, x, tanh.data)
         return tanh
 
 
 class ReLU(ActivationFunction):
+    __slots__ = ("inplace",)
+    def __init__(self, inplace=True):
+        self.inplace=inplace
+
     @autocast_operation
     def __call__(self, x: Tensor) -> Tensor:
-        output = Tensor(x._device.maximum(0, x.data))
+        output = Tensor(x._device.maximum(0, x.data, out=x.data if self.inplace else None))# if self.inplace else Tensor(x._device.maximum(0, x.data))
 
-        register_backward_if_needed(output, back_op.ReLUBackward(x))
+        output.register_backward_if_needed(back_op.ReLUBackward, x)
         return output
     
     def __repr__(self):
@@ -78,8 +77,9 @@ class ReLU(ActivationFunction):
 class Softmax(ActivationFunction):
     __slots__ = ("dim",)
 
-    # Può essere calcolata solo su una dimensione
-    def __init__(self, dim=0) -> None:
+    # Può essere calcolata solo su una dimensione. Di default uso l'ultima,
+    # che dovrebbe essere quella dei dati in un banale caso (batch, classes)
+    def __init__(self, dim=-1) -> None:
         self.dim = dim
 
     @autocast_operation
@@ -87,13 +87,11 @@ class Softmax(ActivationFunction):
         # questa singola linea di codice previene overflow senza modificare
         # l'efficacia del gradient.
         shiftx = x.data - x.data.max(axis=self.dim, keepdims=True)
-        #exps = x._device.exp(shiftx)
-        #softmax = exps / x._device.sum(exps, axis=self.dim, keepdims=True)
         softmax = x._device.exp(shiftx)
         softmax /= x._device.sum(softmax, axis=self.dim, keepdims=True)
         output = Tensor(softmax)
         
-        register_backward_if_needed(output, back_op.SoftmaxBackward(x, self.dim, softmax))
+        output.register_backward_if_needed(back_op.SoftmaxBackward, x, self.dim, softmax)
         return output
     
     def __repr__(self):
@@ -104,7 +102,7 @@ class LogSoftmax(ActivationFunction):
     __slots__ = ("dim",)
 
     # Può essere calcolata solo su una dimensione
-    def __init__(self, dim=0) -> None:
+    def __init__(self, dim=-1) -> None:
         self.dim = dim
 
     @autocast_operation
@@ -115,7 +113,7 @@ class LogSoftmax(ActivationFunction):
         shiftx -= x._device.log(x._device.exp(shiftx).sum(axis=self.dim, keepdims=True))
         softmax = Tensor(shiftx)
 
-        register_backward_if_needed(softmax, back_op.LogSoftmaxBackward(x, self.dim, softmax.data))
+        softmax.register_backward_if_needed(back_op.LogSoftmaxBackward, x, self.dim, softmax.data)
         return softmax
     
     def __repr__(self):

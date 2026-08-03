@@ -183,7 +183,7 @@ def trace_backward(tensor):
 
 
 # https://graphviz.org/doc/info/colors.html
-def draw_graph(root_tensor: Tensor, format='png', rankdir='TB', complete_format=True, layout='dot',  dpi=600.0):
+def draw_graph(root_tensor: Tensor, format='png', rankdir='TB', complete_format=True, layout='dot', small=True, dpi=600.0):
     '''
     Legenda:
     - azzurro: tensore che possiede backward
@@ -202,9 +202,9 @@ def draw_graph(root_tensor: Tensor, format='png', rankdir='TB', complete_format=
     assert rankdir in ['LR', 'TB']
     assert layout in ['dot', 'neato', 'fdp', 'sfdp', 'twopi', 'circo']
 
-    #dot = Digraph(format=format, graph_attr={'rankdir': rankdir, 'dpi': dpi})
     dot = Digraph(format=format, engine=layout, graph_attr={
         'rankdir': rankdir,
+        'size': '250,250!' if small else None,
         'dpi': str(dpi),
         'splines': 'true',
         #'nodesep': '0.2', # incrementa la separazione tra i nodi
@@ -259,6 +259,8 @@ def draw_graph(root_tensor: Tensor, format='png', rankdir='TB', complete_format=
             )
     
     #dot.view()
+    # Mantiene le proporzioni e riduce la scala automatica
+    #dot.graph_attr['size'] = None#'350,350!'
     dot.render('images/complete.gv', format=format, view=True, renderer="cairo")
     return dot
 

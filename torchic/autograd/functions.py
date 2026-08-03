@@ -40,6 +40,7 @@ class BackwardFunction:
             useful data for the backward pass such as reusable tensor (in order to
             do less computation as possible). Parents are always present even if they
             are not useful for the computation because they are used to navigate the graph.
+            NOTE: the parent(s) `Tensor`(s) must be in the very first indices!
         ref_count (int): counts the number of non-leaf tensors (nodes) that have this
             node as parent. I call them "critical tensor" if `ref_count` is greater than 1
             because they need special treatment during the backward pass.
@@ -60,7 +61,7 @@ class BackwardFunction:
     count = 0
     __slots__ = ("ctx", "ref_count", "event_register", "grad_buffer", "id")
 
-    def __init__(self, *ctx: tuple) -> None:
+    def __init__(self, ctx: tuple) -> None:
         self.ctx = ctx
         self.ref_count = 0
         self.event_register = {}
@@ -99,7 +100,6 @@ class BackwardFunction:
         if len(self.ctx) > 1:
             parent2 = self.ctx[1]
             # devo sincerarmi che sia un tensore
-            #if parent2.__class__.__name__ == "Tensor":
             if type(parent2) == type(self.ctx[0]):
                 return self.ctx[0], parent2
         return self.ctx[0], None
@@ -178,6 +178,10 @@ class BackwardFunction:
             return self.id == grad_fn.id
         else:
             return False
+
+    def __repr__(self):
+        # giusto utile per il debugging
+        return self.__str__()
     
     def __str__(self) -> str:
         return f"{self.__class__.__name__}{self.id}"
@@ -200,48 +204,14 @@ class BackwardFunction:
     
 
 
-def register_backward_if_needed(output: 'Tensor',
-                                grad_fn: BackwardFunction) -> None:
-    '''
-    Function that registers the backward function if some conditions are met, such as
-    autograd is on and at least one parent requires grad.
-    Args:
-        output (Tensor): result of the operation
-        grad_fn (BackwardFunction): instance of the backward function to register (which
-           already has received the parents as args) 
-    '''
-    if not CONFIG["grad_enabled"]:
-        return
-    #if grad_fn is not None:
-    parent1, parent2 = grad_fn.parents()
-    #else:
-        #raise RuntimeError(
-            #"Mi stai chiedendo di sovrascrivere una grad function non nulla "
-            #"con un valore nullo... Perche'?"
-            #)
+# ===== Funzioni di Backward (Ordine alfabetico) =====
+# NOTE: puoi usare le in-place ops, MA l'array modificato in-place:
+# - NON deve essere cr_grad (rischio elevato di sporcare la computazione
+#   di un ramo parallelo che ha preso lo stesso cr_grad)
+# - NON deve essere un tensore del ctx (potrei modificare qualcosa che
+#   deve essere usato altrove)
+# - SI SOLO su variabili locali
 
-    
-    #print(f"PRINT IF: {CONFIG['grad_enabled']} and {parent1.requires_grad} or {parent2.requires_grad if parent2 is not None else False}, che fa {CONFIG['grad_enabled'] and (parent1.requires_grad or (parent2.requires_grad if parent2 is not None else False))}")
-    # if autograd is on and at least one of the two parents (if there are two) requires grad
-    #if CONFIG["grad_enabled"] and
-    if parent1._requires_grad or (parent2._requires_grad if parent2 is not None else False):
-        if output._grad_fn is None:
-            # aggiornato a False perché si assegna una grad_fn
-            output._is_leaf = False
-            # da qua in avanti, requires_grad non sarà più modificabile perché
-            # non è più considerato leaf tensor
-            output._requires_grad = True
-            # assegno la grad_fn
-            output._grad_fn = grad_fn
-        else:
-            raise RuntimeError(
-                "Mi stai chiedendo di sovrascrivere una grad function non nulla "
-                "con un valore non nullo, ma questo romperebbe la backpropagation."
-                )
-        
-
-
-# Ordine alfabetico
 
 class AddBackward(BackwardFunction):
     def __call__(self, cr_grad: ArrayType) -> None:
@@ -269,41 +239,69 @@ class AddBackward(BackwardFunction):
                 grad_y = grad_y.sum(axis=tuple(range(cr_grad.ndim - y.data.ndim)))
         
         return grad_x, grad_y
-    
 
-class CatBackward(BackwardFunction):
-    def __call__(self, cr_grad: ArrayType) -> None:
-        x: 'Tensor'
-        chunk_shape: tuple
-        indices: tuple
-        x, chunk_shape, indices = self.ctx
-    
 
-class __ChunckBackward(BackwardFunction):
-    # IDENTICA ad IndexBackward... Non troppo stonks
-    def __call__(self, cr_grad: ArrayType) -> None:
-        x: 'Tensor'
-        chunk_shape: tuple
-        indices: tuple
-        x, chunk_shape, indices = self.ctx
+class CrossEntropyLossBackward(BackwardFunction):
+    def __call__(self, cr_grad: ArrayType) -> tuple['Tensor', None]:
+        '''
+        
+        '''
+        # Allora... Qua il gradiente sarebbe mask*(p - smoothed_target), ma
+        # smoothed_target sarebbe una matrice enorme nel ramo else... Infatti
+        # nel forward NON la creo (a differenza del mio primo approccio).
+        # Di conseguenza, non la voglio creare nemmeno in backward.
+        # Faro' quindi un approccio equivalente ma computazionalmente
+        # meno suicida: lavorare direttamente sule probs, e lo faro'
+        # in-place (su una copia del gradiente).
+        # Infatti, smoothed_target e' un vettore con eps/n_classes
+        # su tutte le entrate e un termine aggiuntivo (1-eps)
+        # solo sulla classe corretta. Mi basta sottrarre e via
+        probs_x: Tensor
+        safe_target: ArrayType
+        mask: ArrayType
+        x, log_probs_x, safe_target, mask, label_smoothing = self.ctx
+        num_classes = x.size(-1)
 
-        out_grad = x._device.zeros(x.shape())
-        out_grad[indices] = cr_grad
+        grad_x = x._device.exp(log_probs_x)
+        if label_smoothing > 0.0:
+            grad_x -= (label_smoothing / num_classes)
 
-        return out_grad, None
+        # ricalcolo safe_targets e batch_indices (non posso passarli
+        # dal forward perche' non esistono se mi passi il target come OHE)
+        batch_indices = x._device.arange(len(safe_target))
+        
+        # Sottraiamo (1 - epsilon) solo dove la classe è corretta. 
+        # Se epsilon = 0, sottrae semplicemente 1 (Cross-Entropy standard)
+        grad_x[batch_indices, safe_target] -= (1.0 - label_smoothing)
+
+        # se ignore index era settato, ho sicuramente una maschera
+        # 4. Gestione ignore_index: azzeriamo i gradienti per i token da ignorare
+        if mask is not None:
+            # La mask ha shape [batch_size], la espandiamo a [batch_size, 1] per il broadcasting
+            grad_x *= mask[..., None]
+
+        if cr_grad.ndim == grad_x.ndim - 1:
+            grad_x *= cr_grad[..., None]
+        else:
+            grad_x *= cr_grad
+        return grad_x, None
 
 
 class ClampBackward(BackwardFunction):
     '''
     Propagates the gradient only to the entries which
-    where not clipped during forward
+    where not clipped during forward.
     '''
     def __call__(self, cr_grad: ArrayType) -> None:
         x: 'Tensor'
         x, min_value, max_value = self.ctx
 
-        cr_grad *= ((x.data >= min_value) & (x.data <= max_value))
-        return cr_grad, None
+        #cr_grad *= ((x.data >= min_value) & (x.data <= max_value))
+        # tanto a priori numpy li promuoverebbe da bool a fp32. Tantovale
+        # esplicitare il casting e sfruttare la in-place
+        grad_x = ((x.data >= min_value) & (x.data <= max_value)).astype(np.float32)
+        grad_x *= cr_grad
+        return grad_x, None
 
 
 class CloneBackward(BackwardFunction):
@@ -331,11 +329,16 @@ class DivBackward(BackwardFunction):
             # d/dx
             # usando la funzione evito errori div by zero
             grad_x = x._device.reciprocal(y.data + 1e-8) * cr_grad
+            #grad_x = x._device.reciprocal(y.data + 1e-8)
+            #print(grad_x.shape, cr_grad.shape)
+            #grad_x *= cr_grad
 
         if y.requires_grad:
             # d/dy
             # per il momento non gestisco div by zero
             grad_y = -x.data / y._device.power(y.data, 2) * cr_grad
+            #grad_y = -x.data / y._device.power(y.data, 2)
+            #grad_y *= cr_grad
 
         return grad_x, grad_y
 
@@ -385,8 +388,9 @@ class ExpBackward(BackwardFunction):
 
         # d/dx( e^x ) = e^x
         # NOTE: l'esponente non si tratta come una composta
-        cr_grad *= x_exp
-        return cr_grad, None
+        #cr_grad *= x_exp
+        grad_x = cr_grad*x_exp
+        return grad_x, None
 
 
 class IndexBackward(BackwardFunction):
@@ -411,8 +415,9 @@ class LogSoftmaxBackward(BackwardFunction):
         softmax: ArrayType
         x, dim, softmax = self.ctx
 
-        cr_grad -= x._device.exp(softmax) * cr_grad.sum(axis=dim, keepdims=True)
-        return cr_grad, None
+        #cr_grad -= x._device.exp(softmax) * cr_grad.sum(axis=dim, keepdims=True)
+        grad_x = cr_grad - x._device.exp(softmax) * cr_grad.sum(axis=dim, keepdims=True)
+        return grad_x, None
 
 
 class MaskedFillBackward(BackwardFunction):
@@ -424,8 +429,13 @@ class MaskedFillBackward(BackwardFunction):
 
         # NOTE: where(mask) =/= where(mask==0)!
         #return x._device.where(mask, 0, cr_grad), None
-        cr_grad *= ~mask
-        return cr_grad, None
+        #cr_grad *= ~mask
+        # bitwise NOT
+        mask = ~mask
+        # mask e cr_grad hanno shape diverse (l'operazione richiede
+        # broadcast), quindi non posso fare in-place su mask
+        grad_x = mask * cr_grad
+        return grad_x, None
 
 
 class MatmulBackward(BackwardFunction):
@@ -504,9 +514,9 @@ class MeanBackward(BackwardFunction):
         if not keepdim:
             if dim is not None:
                 cr_grad = x._device.expand_dims(cr_grad, dim)
-            cr_grad = x._device.broadcast_to(cr_grad, x.data.shape)
+            grad_x = x._device.broadcast_to(cr_grad, x.data.shape)
         else:
-            cr_grad = cr_grad.sum(dim, keepdims=True)
+            grad_x = cr_grad.sum(dim, keepdims=True)
 
         #print(f"MEAN {cr_grad.shape}")
 
@@ -516,7 +526,7 @@ class MeanBackward(BackwardFunction):
         # dL/dx = grad * 1/N (dove N = size(self) = n ingressi. totali di self o dim)
 
         # non posso usare la in-place
-        return cr_grad / x._device.size(x.data, dim), None
+        return grad_x / x._device.size(x.data, dim), None
 
 
 class MulBackward(BackwardFunction):
@@ -570,9 +580,12 @@ class NLLLossBackward(BackwardFunction):
         eps: int
         x, target, eps = self.ctx
 
-        # d/dx(y*log(x + eps)) = y * d/dx(log(x + eps)) = y * 1/(x + eps)
-        cr_grad *= -target.data/(x.data + eps)
-        return cr_grad, None
+        # d/dx(-y*log(x + eps)) = -y * d/dx(log(x + eps)) = -y * 1/(x + eps)
+        #cr_grad *= -target.data/(x.data + eps)
+        #grad_x=-target.data/(x.data + eps) * cr_grad
+        grad_x = -target.data/(x.data + eps)
+        grad_x *= cr_grad
+        return grad_x, None
 
 
 class PermuteBackward(BackwardFunction):
@@ -597,10 +610,11 @@ class PowBackward(BackwardFunction):
         exponent: int
         x, exponent = self.ctx
 
-        # exponent * x._device.power(x.data, exponent-1) * cr_grad
-        cr_grad *= exponent
-        cr_grad *= x._device.power(x.data, exponent-1)
-        return cr_grad, None
+        # classic: d/dx = k*x^(k-1)
+        grad_x = exponent * x._device.power(x.data, exponent-1) * cr_grad
+        #cr_grad *= exponent
+        #cr_grad *= x._device.power(x.data, exponent-1)
+        return grad_x, None
 
 
 class ReLUBackward(BackwardFunction):
@@ -609,9 +623,10 @@ class ReLUBackward(BackwardFunction):
         x: "Tensor"
         x, = self.ctx
 
-        #cr_grad *= x._device.where(x.data > 0, 1, 0)
-        cr_grad *= x._device.heaviside(x.data, 0)
-        return cr_grad, None
+        #cr_grad *= x._device.heaviside(x.data, 0)
+        grad_x = x._device.heaviside(x.data, 0)
+        grad_x *= cr_grad
+        return grad_x, None
 
 
 class SELossBackward(BackwardFunction):
@@ -621,9 +636,10 @@ class SELossBackward(BackwardFunction):
         x, target = self.ctx
 
         # 2*(x.data - target) * cr_grad
-        cr_grad *= 2
-        cr_grad *= (x.data - target)
-        return cr_grad, None
+        #cr_grad *= 2
+        grad_x = cr_grad*2
+        grad_x *= (x.data - target)
+        return grad_x, None
     
 
 class SigmoidBackward(BackwardFunction):
@@ -633,9 +649,10 @@ class SigmoidBackward(BackwardFunction):
 
         # d/dσ = σ(x) * (1 - σ(x));
         # sigmoid * (1 - sigmoid) * cr_grad
-        cr_grad *= sigmoid
-        cr_grad *= (1 - sigmoid)
-        return cr_grad, None
+        #cr_grad *= sigmoid
+        grad_x = cr_grad*sigmoid
+        grad_x *= (1 - sigmoid)
+        return grad_x, None
 
 
 class SoftmaxBackward(BackwardFunction):
@@ -650,9 +667,9 @@ class SoftmaxBackward(BackwardFunction):
         derivata completa w.r.t. un input
         '''
         #grad_x = softmax * (cr_grad - x._device.sum(cr_grad * softmax, axis=dim, keepdims=True))
-        cr_grad -= x._device.sum(cr_grad * softmax, axis=dim, keepdims=True)
-        cr_grad *= softmax
-        return cr_grad, None
+        grad_x = cr_grad - x._device.sum(cr_grad * softmax, axis=dim, keepdims=True)
+        grad_x *= softmax
+        return grad_x, None
 
 
 class SqrtBackward(BackwardFunction):
@@ -662,8 +679,10 @@ class SqrtBackward(BackwardFunction):
         x_sqrt = self.ctx[1]
 
         # d/dx = 1/(2*sqrt(x))
-        cr_grad *= 1/(2*x_sqrt)
-        return cr_grad, None
+        #cr_grad *= 1/(2*x_sqrt)
+        grad_x = 1/(2*x_sqrt)
+        grad_x *= cr_grad
+        return grad_x, None
     
 
 class SqueezeBackward(BackwardFunction):
@@ -709,15 +728,15 @@ class SumBackward(BackwardFunction):
         if not keepdim:
             if dim is not None:
                 cr_grad = x._device.expand_dims(cr_grad, dim)
-            cr_grad = x._device.broadcast_to(cr_grad, x.data.shape)
+            grad_x = x._device.broadcast_to(cr_grad, x.data.shape)
         else:
-            cr_grad = cr_grad.sum(dim, keepdims=True)
+            grad_x = cr_grad.sum(dim, keepdims=True)
 
         # d/dx( (x + y + ... + z)) = [d/dx(x) + d/dx(y) + ... + d/dx(z)]
         # sto derivando w.r.t. x => le altre le tratto come costanti
         # = [1 + 0 + ... + 0] = 1
         # dL/dx = grad * 1
-        return cr_grad, None
+        return grad_x, None
 
 
 class StdBackward(BackwardFunction):
@@ -733,17 +752,20 @@ class StdBackward(BackwardFunction):
             if dim is not None:
                 cr_grad = x._device.expand_dims(cr_grad, dim)
             # questo cr_grad sara' read-only dopo il broadcast
-            cr_grad = x._device.broadcast_to(cr_grad, x.data.shape)
+            grad_x = x._device.broadcast_to(cr_grad, x.data.shape)
         else:
-            cr_grad = cr_grad.sum(dim, keepdims=True)
+            grad_x = cr_grad.sum(dim, keepdims=True)
 
         # Derivata della deviazione standard:
         # d/dx(sqrt((x - mean)^2 / N))
         # = (x - mean) / (N * std)
 
         #return cr_grad * numerator / (denom + 1e-8), None
-        numerator /= (denom + 1e-8)
-        return cr_grad * numerator, None
+        # per evitare division by zero
+        denom += 1e-8
+        numerator /= denom
+        numerator *= grad_x
+        return numerator, None
 
 
 class TanhBackward(BackwardFunction):
@@ -751,8 +773,10 @@ class TanhBackward(BackwardFunction):
         tanh: ArrayType
         tanh = self.ctx[1]
 
-        cr_grad *= 1-tanh**2
-        return cr_grad, None
+        #cr_grad *= 1-tanh**2
+        grad_x = 1-tanh**2
+        grad_x *= cr_grad
+        return grad_x, None
     
 
 class ToCopyBackward(BackwardFunction):
@@ -819,17 +843,23 @@ class VarBackward(BackwardFunction):
         if not keepdim:
             if dim is not None:
                 cr_grad = x._device.expand_dims(cr_grad, dim)
-            cr_grad = x._device.broadcast_to(cr_grad, x.data.shape)
+            grad_x = x._device.broadcast_to(cr_grad, x.data.shape)
         else:
-            cr_grad = cr_grad.sum(dim, keepdims=True)
+            grad_x = cr_grad.sum(dim, keepdims=True)
 
         # d/dx((x-x.mean)^2 / (N)) = 2(x-x.mean) / N
         # 2*mean/n * cr_grad
-        mean *= 2
-        mean /= n
+        # non scompongo in due in-place perche' e' meglio
+        # fare la divisione su uno scalare
+        grad_x *= 2/n
+        grad_x *= mean
+        #grad_x /= n
+        #mean *= 2
+        #mean /= n
         # non posso farlo, l'output e' read-only
         #cr_grad *= mean
-        return cr_grad*mean, None
+        #return grad_x*mean, None
+        return grad_x, None
 
 
 class ViewBackward(BackwardFunction):

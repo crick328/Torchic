@@ -1,16 +1,22 @@
-import os
-os.environ['KAGGLE_CONFIG_DIR'] = r'your\path'
-from kaggle.api.kaggle_api_extended import KaggleApi
-
-from base_classes import Dataset
+from torchic.data.dataloaders.base_classes  import Dataset
+from datasets import load_dataset
+from torchic import Tensor
 
 
-class MnistDataset(Dataset):
-    def __init__(self, data) -> None:
-        super().__init__(data)
 
-    def __len__(self):
-        pass
+def get_MNIST_dataset():
+    # DatasetDict avente gia' train/test split.
+    # Ogni entry dataset[i] ha un campo "image"
+    # e uno "label"
+    raw_dataset = load_dataset("ylecun/mnist")
+    return Mnist(raw_dataset["train"]), Mnist(raw_dataset["test"])
 
-    def __getitem__(self, index):
-        return super().__getitem__(index)
+
+class Mnist(Dataset):
+    # questo invece sei costretto a definirlo a mano
+    def __getitem__(self, idx):
+        # non converto la label in Tensor, sarebbe uno spreco
+        return {
+            "image": Tensor(self.dataset[idx]["image"]),
+            "label": self.dataset[idx]["label"]
+        }

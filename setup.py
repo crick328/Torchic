@@ -34,18 +34,19 @@ class PostInstallCommand(install):
 
 # Base requirements (common to all installations)
 base_requirements = [
-    'numpy==1.26.2',
-    'typing_extensions==4.9.0',
-    'safetensors==0.4.3',
-    'kaggle',
-    #WIP
+    'numpy>=1.26.2',
+    'typing_extensions>=4.9.0',
+    'safetensors>=0.4.3',
     'datasets',
-    'pandas'
+    # Semi-optionals
+    'kaggle',
+    'pandas'    # used only for SG Dataset
 ]
 
 # GPU (CuPy) requirements
 gpu_requirements = [
-    'cupy-cuda12x==13.0.0'
+    'cupy-cuda12x>=14.0.0',
+    'ml-dtypes'     # for bfloat16
 ]
 
 # Visual (matplotlib and graphviz) requirements
@@ -63,7 +64,7 @@ extras = {
 
 setup(
     name='Torchic',
-    version='2.4',
+    version='3.2',
     packages=find_packages(),
     install_requires=base_requirements,
     extras_require=extras,
@@ -80,5 +81,5 @@ setup(
         #'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
     ],
-    python_requires='>=3.8',
+    python_requires='>=3.10',
 )

@@ -1,5 +1,5 @@
 from torchic.cuda_tensor import Tensor
-from torchic.autograd.functions import register_backward_if_needed, EmbeddingBackward
+from torchic.autograd.functions import EmbeddingBackward
 import torchic.nn.initializers as inits
 from torchic.nn.module import Module
 from torchic.tools.helpers import zeros
@@ -107,7 +107,7 @@ class Embedding(Linear):
 
         # NOTE: non riesco ad implementarla in modo pulito. Aggiunge
         # la grad_fn solamente se hai parents 
-        register_backward_if_needed(output, EmbeddingBackward(x, self.weights))
+        output.register_backward_if_needed(EmbeddingBackward, x, self.weights)
 
         # x non puo' richiedere il grad perche' e' un tensore di interi
         #if self.weights.requires_grad:
@@ -121,23 +121,24 @@ class Dropout(Module):
     '''
     Setta a 0 randomicamente alcuni valori dell'input secondo la probabilità data in input.
     Sono attivi solo durante la fase di training (cosa che devi implementare).
+    Le operazioni sono svolte inplace ma supportano backward corretta
 
     Args:
         p (float): probability of an element to be zeroed. It has to be
                  in range [0, 1]
     '''
-    __slots__ = ("p", "training")
+    __slots__ = ("p", "training", "scale")
 
     def __init__(self, p: float=0.5):
         self.p = p
         self.training = True
+        self.scale = Tensor(1.0 / (1.0 - self.p))
 
     def __call__(self, x):
         if self.training:
             # Bernoulli (bilinear) distribution
             mask = Tensor(x._device.random.rand(*x.shape()) > self.p)
             # "inverted dropout"
-            scale = Tensor(1.0 / (1.0 - self.p))
             x *= mask
-            x *= scale
+            x *= self.scale
         return x

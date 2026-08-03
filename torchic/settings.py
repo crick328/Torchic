@@ -6,17 +6,6 @@ try:
     import cupy as cp
     CUPY_AVAILABLE = True
 except ImportError:
-    # creo un oggetto dummy in modo che appena viene chiamato un
-    # _device.funzione(), salta in aria tutto.
-    # E' l'unica idea che mi e' venuta per gestire l'accesso 
-    # a DEVICE_MAP["cuda"] senza cuda
-    
-    class NoCuPyExceptionRaiser:
-        __slots__ = ()
-        # blocca qualsiasi accesso a proprietà, variabili e metodi
-        def __getattribute__(self, name):
-            raise RuntimeError("CuPy is not available. Install it to use CUDA features.")
-    
     CUPY_AVAILABLE = False
 
 
@@ -77,11 +66,6 @@ DEVICE_SPECS = {
     "computeCapability": 0      # dato importante; racchiude le capacita' tecniche della scheda
     # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities
 }
-DEVICE_MAP = {
-    None: np if CONFIG["default_device"] == "cpu" else cp,
-    "cpu": np
-}
-
 
 if CUPY_AVAILABLE:
     if cp.cuda.is_available():
@@ -98,18 +82,12 @@ if CUPY_AVAILABLE:
         if CONFIG["use_cuda_if_available"]:
             CONFIG["default_device"] = "cuda"
             print("GPU selected as default device.")
-
-        # aggiorno il dict dei devices
-        DEVICE_MAP["cuda"] = cp
     else:
         warnings.warn(
                 "CuPy is installed, but your GPU isn't cuda "
                 "capable or you are missing the cuda library. "
             )
         CONFIG["default_device"] = "cpu"
-        DEVICE_MAP["cuda"] = NoCuPyExceptionRaiser()
-else:
-    DEVICE_MAP["cuda"] = NoCuPyExceptionRaiser()
         
 
 
@@ -226,13 +204,12 @@ def use_brain_float(flag: bool) -> None:
             "available (probably for your current CuPy's version)."
             "This call will be ignored."
         )
-        
-
-def set_mixed_precision_dtype(dtype: cp.dtype) -> None:
-    CONFIG["mixed_precision"]["dtype"] = dtype
 
 def get_mixed_precision_dtype() -> cp.dtype:
     return CONFIG["mixed_precision"]["dtype"]
+
+def set_mixed_precision_dtype(dtype: cp.dtype) -> None:
+    CONFIG["mixed_precision"]["dtype"] = dtype
 
 def is_mixed_precision_enabled() -> bool:
     return CONFIG["mixed_precision"]["enabled"]

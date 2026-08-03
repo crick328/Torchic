@@ -1,5 +1,4 @@
 from torchic.dtypes import float32, dtype
-from torchic.autograd.functions import register_backward_if_needed
 import torchic.autograd.functions as back_op
 
 from typing import TYPE_CHECKING
@@ -113,7 +112,7 @@ def _manage_arg_dtype(arg: 'Tensor', safeness: int) -> 'Tensor':
                     # di chiamare .step()) e restituisco il tensore
                     # in cache
                     casted = amp_cache[tensor_id]
-                    register_backward_if_needed(casted, back_op.ToCopyBackward(arg, arg.device, arg.dtype))
+                    casted.register_backward_if_needed(back_op.ToCopyBackward, arg, arg.device, arg.dtype)
                     
             else:
                 # converto direttamente

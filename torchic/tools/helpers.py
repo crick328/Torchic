@@ -12,7 +12,7 @@ import cupy as cp
 
 
 # solo per compatibilita' con PyTorch, non mi piace e non lo uso
-def tensor(data, requires_grad, device, dtype):
+def tensor(data, requires_grad=False, device=None, dtype=None):
     return Tensor(data=data, requires_grad=requires_grad, device=device, dtype=dtype)
 
 

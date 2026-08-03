@@ -1,8 +1,8 @@
 from torchic.cuda_tensor import Tensor
 from torchic.nn.activations import Softmax, LogSoftmax
 import torchic.autograd.functions as back_op
-from torchic.autograd.functions import register_backward_if_needed
-from torchic.dtypes import int64
+from torchic.dtypes import int32, int64
+from torchic.autograd.grad_context import no_grad
 
 # check derivata
 
@@ -48,7 +48,7 @@ class MSELoss:
         '''
         loss = Tensor(x._device.power(x.data - target.data, 2))
 
-        register_backward_if_needed(loss, back_op.SELossBackward(x, target.data))
+        loss.register_backward_if_needed(back_op.SELossBackward, x, target.data)
         
         # per compatibilita' con PyTorch
         match self.reduction:
@@ -90,13 +90,13 @@ class NegativeLogLikehoodLoss:
                 self_grad=-target.data/(x.data + eps) * cr_grad
             )
 
-        register_backward_if_needed(loss, back_op.NLLLossBackward(x, target, eps))
+        loss.register_backward_if_needed(back_op.NLLLossBackward, x, target, eps)
         return loss
 
 
 class CrossEntropyLoss:
     __slots__ = ("log_soft", "softmax", "reduction",
-                 "ignore_index", "label_smoothing")
+                 "ignore_index", "eps")
 
     '''
     Combinazione ottimizzata di `torch.nn.LogSoftmax` e `torch.nn.NegativeLogLikehoodLoss`.
@@ -112,21 +112,248 @@ class CrossEntropyLoss:
             ignore_index (int, optional): Specifies a target value (which should
                 represent a class) that is ignored and does not contribute to the
                 input gradient.
-                Target has to be an array of integer containing the class labels.
+                Target has to be an array of integer containing the class labels,
+                NOT one hot encoded.
                 Default is `-100` (which means not applied).
             label_smoothing (float, optional): redistributes the target probabilities
                 to lower the correct class value and increase the other classes.
-                This reduce the model confidence, (hopefully) allowing for
+                The epsilon removed from the correct class is evenly distributed
+                to the others.
+                It reduces the model confidence, (hopefully) allowing for
                 better generalization and less overfitting.
                 value can be `[0.0, 1.0]`. Default is `0.0`.
         '''
         self.log_soft = LogSoftmax(-1)
-        self.softmax = Softmax(-1)
         self.reduction = reduction
         self.ignore_index = ignore_index
-        self.label_smoothing = label_smoothing
+        self.eps = label_smoothing
 
     def __call__(self, x: Tensor, target: Tensor) -> Tensor:
+        '''
+        This version accepts only a `target` which is an integer
+        `Tensor` of labels. One hot encoding is no longed supported
+        because it complicates the backward logic (and also the forward)
+        for nothing: they occupy a lot of memory and you can't even
+        use the `ignore_index` param.
+        If you need OHE support, use the legacy version with `.funzione()`
+        '''
+        # questa NON puo' generare backprop, altrimenti creo un'altra
+        # reference alla backward di x, creando quindi un ref_count
+        # di 2 che non verra' MAI esaurito! In piu' perdi memoria.
+        # Potrei fare copia-incolla delle due righe della softmax, ma
+        # non mi piace per niente come idea. La logica deve essere
+        # centralizzata
+        with no_grad():
+            log_probs = self.log_soft(x).data
+
+        # se l'utente vuole azzerare il gradiente associato ad una classe
+        if self.ignore_index != -100:
+            # gli indici (labels delle classi) devono essere interi
+            if not target.dtype.kind != 'i':
+                raise RuntimeError(
+                    f"'ignore_index' supports only integer target dtype, "
+                    f"received {target.dtype} dtype instead "
+                    "(Note that you have to specify the dtype when creating "
+                    "the target tensor or else will be casted to the default "
+                    "dtype of the library)."
+                )
+            
+            mask = Tensor(target.data != self.ignore_index, device=target.device, dtype=int32)
+            # sostituisco gli indici da ignorare con 0 per evitare 
+            # IndexErrors o errori silenti (dovuti all'autogestione di np/cp)
+            # durante l'indexing su log_prob_x
+            # occhio: qua puo' partire type promotion se passi dei target
+            # float per svista
+            safe_target = target.data * mask.data
+        else:
+            mask=None
+            safe_target = target.data
+        
+        # prendo le log-probs del modello associate alla classe corretta
+        batch_indices = x._device.arange(len(target.data))
+        nll_loss = -log_probs[batch_indices, safe_target]
+
+        # termine di smoothing (media su tutte le classi)
+        if self.eps > 0.0:
+            #smooth_loss = -log_probs.mean(dim=-1)
+            smooth_loss = -x._device.mean(log_probs, axis=-1)
+            loss = Tensor(nll_loss*(1 - self.eps) + self.eps*smooth_loss)
+        else:
+            loss = Tensor(nll_loss)
+
+        if mask is not None:
+            loss *= mask
+
+
+        loss.register_backward_if_needed(
+            back_op.CrossEntropyLossBackward,
+            x, log_probs, safe_target,
+            mask.data if mask is not None else None, self.eps
+        )
+
+        match self.reduction:
+            case "none":
+                pass
+            case "sum":
+                loss = loss.sum()
+            case "mean":
+                if self.ignore_index != -100:
+                    loss = loss.sum() / mask.sum()
+                else:
+                    loss = loss.mean()
+            case _:
+                raise ValueError(
+                    f"Received {self.reduction} as reduction value, but only "
+                    "'none', 'sum' or 'mean' is valid."
+                    )
+
+        return loss
+
+    def __full_call__(self, x: Tensor, target: Tensor) -> Tensor:
+            num_classes = x.size(-1)
+            mask = None
+            log_probs = self.log_soft(x).data
+    
+            # se il target sono OHE
+            if x.data.ndim == target.data.ndim:
+                # tutte le classi ricevono un +eps/n_classes, mentre solo la classe target
+                # riceve anche un termine +(1-eps)
+                smoothed_target = target * Tensor(1.0 - self.eps) + Tensor(self.eps / num_classes)
+                loss = -(smoothed_target * log_probs).sum(-1)
+            # se il target e' un vettore di labels (quindi indici interi)
+            else:
+                # se l'utente vuole azzerare il gradiente associato ad una classe
+                if self.ignore_index != -100:
+                    # gli indici (labels delle classi) devono essere interi
+                    if not target._device.issubdtype(target.dtype, target._device.integer):
+                        raise RuntimeError(
+                            f"'ignore_index' supports only integer target dtype, "
+                            f"received {target.dtype} dtype instead "
+                            "(Note that you have to specify the dtype when creating "
+                            "the target tensor or else will be casted to the default "
+                            "dtype of the library)."
+                        )
+                    mask = Tensor(target.data != self.ignore_index, device=target.device, dtype=int64)
+                    # sostituisco gli indici da ignorare con 0 per evitare 
+                    # IndexErrors o errori silenti (dovuti all'autogestione di np/cp)
+                    # durante l'indexing su log_prob_x
+                    # occhio: qua puo' partire type promotion se passi dei target
+                    # float per svista
+                    safe_target = target.data * mask.data
+                else:
+                    safe_target = target.data
+                
+                # prendo le log-probs del modello associate alla classe corretta
+                batch_indices = x._device.arange(len(target.data))
+                print(batch_indices.dtype, safe_target.dtype)
+                nll_loss = -log_probs[batch_indices, safe_target]
+    
+                # termine di smoothing (media su tutte le classi)
+                if self.eps > 0.0:
+                    #smooth_loss = -log_probs.mean(dim=-1)
+                    smooth_loss = -x._device.mean(log_probs, axis=-1)
+                    loss = Tensor(nll_loss*(1 - self.eps) + self.eps*smooth_loss)
+                else:
+                    loss = Tensor(nll_loss)
+    
+                if mask is not None:
+                    loss *= mask
+    
+    
+            loss.register_backward_if_needed(
+                back_op.CrossEntropyLossBackward,
+                x, log_probs, target.data, mask.data if mask is not None else None, self.eps
+            )
+    
+            match self.reduction:
+                case "none":
+                    pass
+                case "sum":
+                    loss = loss.sum()
+                case "mean":
+                    if self.ignore_index != -100:
+                        loss = loss.sum() / mask.sum()
+                    else:
+                        loss = loss.mean()
+                case _:
+                    raise ValueError(
+                        f"Received {self.reduction} as reduction value, but only "
+                        "'none', 'sum' or 'mean' is valid."
+                        )
+    
+            return loss
+
+    def __ecall__(self, x: Tensor, target: Tensor) -> Tensor:
+        num_classes = x.size(-1)
+        log_prob_x = self.log_soft(x)
+
+        # se il target sono OHE
+        if x.data.ndim == target.data.ndim:
+            # tutte le classi ricevono un +eps/n_classes, mentre solo la classe target
+            # riceve anche un termine +(1-eps)
+            smoothed_target = target * Tensor(1.0 - self.eps) + Tensor(self.eps / num_classes)
+            loss = -(smoothed_target * log_prob_x).sum(-1)
+        # se il target e' un vettore di labels (quindi indici interi)
+        else:
+            # se l'utente vuole azzerare il gradiente associato ad una classe
+            if self.ignore_index != -100:
+                # gli indici (labels delle classi) devono essere interi
+                if not target._device.issubdtype(target.dtype, target._device.integer):
+                    raise RuntimeError(
+                        f"'ignore_index' supports only integer target dtype, "
+                        f"received {target.dtype} dtype instead "
+                        "(Note that you have to specify the dtype when creating "
+                        "the target tensor or else will be casted to the default "
+                        "dtype of the library)."
+                    )
+                mask = Tensor(target.data != self.ignore_index, device=target.device, dtype=int64)
+                # sostituisco gli indici da ignorare con 0 per evitare 
+                # IndexErrors o errori silenti (dovuti all'autogestione di np/cp)
+                # durante l'indexing su log_prob_x
+                safe_target = target.data * mask.data
+            else:
+                mask = None
+                safe_target = target.data
+
+            # prendo le log-probs del modello associate alla classe corretta
+            batch_indices = x._device.arange(len(target.data))
+            nll_loss = -log_prob_x[batch_indices, safe_target]
+
+            # termine di smoothing (media su tutte le classi)
+            # if self.label_smoothing > 0.0:
+            smooth_loss = -log_prob_x.mean(dim=-1)
+            loss = nll_loss*Tensor(1 - self.eps) + self.label_smoothing*smooth_loss
+            #else:
+                #loss = nll_loss
+
+            if mask is not None:
+                loss *= mask
+
+        loss.register_backward_if_needed(x, )
+
+        match self.reduction:
+            case "none":
+                pass
+            case "sum":
+                loss = loss.sum()
+            case "mean":
+                if self.ignore_index != -100:
+                    loss = (loss * mask).sum() / mask.sum()
+                else:
+                    loss = loss.mean()
+            case _:
+                raise ValueError(
+                    f"Received {self.reduction} as reduction value, but only "
+                    "'none', 'sum' or 'mean' is valid."
+                    )
+
+        # eh, la backward ad hoc non sembra funzionare
+        # con l'aggiunta dei vari parametri... Percio'
+        # ho scritto tutta la __call__ con il framework
+        # di autograd in modo che tutto sia backpropagabile
+        return loss
+
+    def __ogcall__(self, x: Tensor, target: Tensor) -> Tensor:
         '''
         La versione 2D da' per scontato che il *vettore* target ricevuto siano
         *le labels* delle classi giuste!
@@ -172,9 +399,13 @@ class CrossEntropyLoss:
         if x.data.ndim == target.data.ndim:
             # Questo funziona per prediction 1D
             smoothed_targets = Tensor(target.data * (1 - self.label_smoothing) + self.label_smoothing / num_classes)
+            loss = -(smoothed_targets * log_prob_x).sum(-1)
         else:
             # Questo funziona per prediction 2D
             one_hot_targets = x._device.eye(num_classes)[target.data]
+            # perche' non da' IndexError? Perche' numpy gestisce
+            # silenziosamente arr[-100] partendo dal fondo! Potrebbe
+            # causare bug silenti! BRUZZOH!
             smoothed_targets = Tensor(one_hot_targets * (1 - self.label_smoothing) + self.label_smoothing / num_classes)
 
         log_prob_x = self.log_soft(x)
@@ -191,9 +422,9 @@ class CrossEntropyLoss:
                     "dtype of the library)."
                 )
             mask = Tensor(target.data != self.ignore_index, device=target.device, dtype=int64)
+            # SUS!
             loss *= mask
         
-
         match self.reduction:
             case "none":
                 pass

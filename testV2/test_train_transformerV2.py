@@ -1,15 +1,13 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.1")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.2")
 from torchic import set_default_device, set_default_precision
 # CUDA settings
 from torchic import set_max_async_streams, set_time_threshold_ms, set_use_null
-from torchic import Tensor
 from torchic.tools.visualization.graphs import draw_graph
 from torchic.tools.code_analysis.mem import get_nbytes
-from torchic.tools import helpers
 from torchic.nn.models.transformer_config import get_config
-from torchic.data.dataloaders.transformer_dataset import BilingualDataset
-from torchic.data.dataloaders.base_classes import DataLoader
+from torchic.data.dataloaders.transformer_dataset import BilingualDataset, DataLoaderForLLM
+#from torchic.data.dataloaders.base_classes import DataLoader
 from torchic.nn.optim import AdamV3, AdamV4
 from torchic.nn.loss import CrossEntropyLoss
 from torchic.nn.models.save_load import save, load_checkpoint
@@ -22,9 +20,7 @@ from tokenizers import Tokenizer # pip install tokenizers
 from tokenizers.models import WordLevel
 from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
-#from tokenizers.models import BPE
-#from tokenizers.trainers import BpeTrainer
-#from tokenizers.pre_tokenizers import ByteLevel
+
 
 import os
 import random
@@ -54,16 +50,9 @@ LEGACY_MODEL = False
 ALLOW_FUSION = True
 SG_DATASET = False
 
-# Il metodo GPT occupa 9.9 -> 13.6 GB (o 14) (batch=8), ma la loss scende ad 1.3 al 3% della
-# prima batch... ETA di 15 min ad epoch
-# Mio stack: 10.2 -> 10.2 GB (o 13.3), ETA di 15 min ad epoch, loss normale
-# Approcio vanilla: 12 GB, ETA 22 min ad epoch
-# Comunque controlla il file che confronta i dataset perche'
-# qualcosa non torna
+DRAW_GRAPH=False
 
 
-
-#sys.setrecursionlimit(1500)
 set_default_device("cuda")
 set_default_precision(32)
 set_max_async_streams(4)
@@ -248,35 +237,7 @@ def get_or_build_tokenizer(model_config, dataset, lang):
     return tokenizer
 
 
-def random_split(data, lengths, seed=None):
-    """
-    Suddivide una lista di dizionari in sottogruppi di lunghezze specificate.
-    
-    Parameters:
-    data (list of dict): La lista di dizionari da suddividere.
-    lengths (list of int): Una lista contenente le lunghezze dei sottogruppi.
-    seed (int, optional): Un seme per il generatore di numeri casuali (per riproducibilità).
-    
-    Returns:
-    list of list of dict: Una lista di liste di dizionari suddivisi.
-    """
-    if sum(lengths) != len(data):
-        raise ValueError("La somma delle lunghezze deve essere uguale alla lunghezza dei dati.")
-    
-    if seed is not None:
-        random.seed(seed)
-    
-    indices = list(range(len(data)))
-    random.shuffle(indices)
-    splits = []
-    current_idx = 0
-    
-    for length in lengths:
-        split_indices = indices[current_idx:current_idx + length]
-        splits.append([data[i] for i in split_indices])
-        current_idx += length
-    
-    return splits
+
 
 
 def get_dataset(model_config):
@@ -323,7 +284,7 @@ def get_dataset(model_config):
                                 model_config["lang_trg"],
                                 model_config["seq_len"],
                                 dynamic_masking=DYNAMIC_MASKING)
-    
+
     print(len(val_ds))
     
     #train_ds = train_ds.subset(1/1000)
@@ -343,8 +304,8 @@ def get_dataset(model_config):
     print(f"Max length of src lang: {max_len_src}")
     print(f"Max length of trg lang: {max_len_trg}")
 
-    train_dataloader = DataLoader(train_ds, batch_size=model_config["batch_size"], shuffle=True, my_stack=MY_STACK)
-    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True, my_stack=MY_STACK)
+    train_dataloader = DataLoaderForLLM(train_ds, batch_size=model_config["batch_size"], shuffle=True, my_stack=MY_STACK)
+    val_dataloader = DataLoaderForLLM(val_ds, batch_size=1, shuffle=True, my_stack=MY_STACK)
 
     return train_dataloader, val_dataloader, tokenizer_src, tokenizer_trg
 
@@ -462,8 +423,9 @@ def train_model(model_config):
             loss = loss_fn(prediction.view(-1, tokenizer_trg.get_vocab_size()), target.view(-1))
             batch_iterator.set_postfix({"loss": f"{loss.data : 6.3f}"})
 
-            #draw_graph(prediction, format="svg")#, complete_format=False)
-            #exit()
+            if DRAW_GRAPH:
+                draw_graph(prediction, format="svg")#, complete_format=False)
+                exit()
 
             loss.backward()
 

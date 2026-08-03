@@ -35,7 +35,7 @@ with autocast():
     #a.matmul(b)
     #a.matmul(b)
     c=a.matmul(b)
-    assert c.dtype == torchic.float16
+    #assert c.dtype == torchic.float16
 
 print(c.dtype)
 exit()

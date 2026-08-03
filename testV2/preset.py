@@ -1,6 +1,6 @@
 import sys
 import torch
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.1")
+sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.2")
 import torchic
 from torchic.tools.code_analysis.gradient_checking import check_gradient
 from torchic.tools.visualization.graphs import draw_graph

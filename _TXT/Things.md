@@ -2,25 +2,34 @@ Voglio riordinare e riassumere tutto cio' che ho scritto nei txt vari
 
 # Cache
 Cose a cui stavo lavorando:
-- PROBLEMONE: l'approccio attuale di AMP e' un vicolo cieco. Dovrei decorare tutte le funzioni, ma avrei un overhead mostruoso e il wrapper sarebbe attivo anche ad AMP spento. In piu', pytorch funziona a livello di singola operazione, mentre il mio approccio wrappa funzioni grosse. Potrei creare una chiamata aggiuntiva (non wrapper) in tutte le funzioni elementari di Tensor, ma cosi' tutte le forward che usano .data per staccarsi dal grafo non potrebbero mai ricevere il trattamento di AMP. Tutto cio' mi puzza di 3.2: cancelliamo l'uso dei .data (che ci sta, cosi' mi assicuro che tutto funzioni come dico io), modernizziamo AMP e creiamo della logica per far si che i forward con backward custom vengano trattati correttamente (non posso usare no_grad o spacco tutto). Prendila come versione sperimentale perche' non so che danni posso creare a livello di overhead con tutti sti tensori intermedi. **Insomma**, per ora o devio per sfruttare al massimo AMP e spammare ovunque di tensori (insostenibile) o 
-- => pytorch non lavora esattamente a livello di singola operazione, ma di **primitiva**. Ad esempio, std() e' un'operazione che e' composta da tanti calcoli intermedi. Tuttavia, AMP non li vede perche' std e' implementata come operazione a basso livello, in C++. AMP intercetta solo i tensori python.
-Tornando al _tuo_ AMP, per ora potrebbe pure funzionare: gli input sono castati dinamicamente e potrestio decorare solo le operazioni che sono in whitelist perche' tanto gli output sono castati automaticamente a float32 quando incapsuli il risultato nel Tensor.
-  - L'unico problema di questo approccio e' che cosi' crei un rimbalzo continuodi casting se ad esempio hai tre Linear di fila... Posso lavorarci sopra comunque.
-  - Un altro problema e' che le firme del wrapper devono essere giuste perche' args e kwars sono _lentissimi_ e bruciano memoria. Posso fare due decoratori che condividono la logica e hanno firme per funzioni a singoli arg e doppio, ma non mi piace come soluzione.
-  - Piuttosto, vorrei sfruttare di piu' il fatto che i decoratori hanno una porzione di logica che parte **all'avvio della libreria**.
-  - La questione delle copie in fp16 si risolve in fretta, ma non mi piace. Dovrei tenere una copia fissa in memoria, ma allora quale sarebbe il vantaggio?
+- CCELoss. Il codice era raffazzonato e Gemini ha proposto una versione di cui
+  ho controllato forward/backward e sono sani. E' piu' veloce ed occupa meno
+  memoria perche' non usa la tua (brutta) matrice OHE (ma sei matto?!). Hai anche un comportamento indefinito nell'index (che pero' sembra non avere impatto...)
+- rifinitura codice CCE (cosa buttare in backward, type hinting, commenti sia 
+  in backward che in forward)
+  Chissa' quanto altro grasso si puo' tagliare da altre cose mezze implementate! Farei come per grad_check: implementazione a mano da fresco con nuove spiegazioni (il tuo mi sembra superiore in termini di logica)
+- testing AMP. Take the opportunity and rewrite/tidy the old training codes
+  for the Sequential and the messy one of the Transformer!
+- e' tempo di scrivere un po' di test... Soprattutto ora che c'e' il nuovo
+  cannone a rotaie di grad_check()!
+- refine Dataset and Dataloader... They were written frenetically in order
+  to do the very first Transformer training, but they can't stay like this
+ 
 
-- nuova idea per AMP: il decortore servira' solo per dire "ehi, controlla se quest'operazione e' safe" e sara' fatto all'avvio. Non avra' nient'altro, quindi zero overhead in runtime. Volendo si puo' anche creare una cache: se l'operazione non e' presente in questo file AMP_cache.json, parte is_safe_in_float16, senno' legge la classificazione (volendo si possono creare impostazioni per resettarla e cosi' via).  Quando si entra nel context, scopo
-- **LE ACTIVATION_FUNCTION HANNO IL __dict__ PERCHE" NON UYSANO GLI SLOTS!!** Ci sono altri casi del genere??
-- manca ToBackward
 
 
 # Next
 - Grad Checkpointing
+- refine Dataset and Dataloader... They were written frenetically in order
+  to do the very first Transformer training, but they can't stay like this
 - AMP (https://docs.pytorch.org/docs/2.12/amp.html#module-torch.amp)
 - In-place Ops (for performance and memory). Masked_fill and some activations can also be made in-place
 - kernel fusion (pare basti un decoratore e una funzione che usa solo roba cupy, stile jit). Non so se la differenza e' apprezzabile, prova prima a misurare le differenze sulla sigmoid
-- group and sort the functions of Tensor's class because it's a mess to navigate
+- convertire test nei file in pytests
+- fare test di controllo/confronto su ReLU inplace (preferirei farlo con le
+  mie gambe, senza compararmi a PyTorch. Gia' implementati in vari file) e masked_fill_
+- generale: i metodi helpers e tutta la logica in tools e' abbandonata a 
+  se' stessa al momento. Quando vuoi curala un po'
 
 
 NOTE:
@@ -68,6 +77,17 @@ NOTE:
 
 ## Dataset
 - Process Wikipedia's downloaded data
+Fine Web Edu + wiki ita, ma tocca fare un po' di calcoli...
+Bisogna trasformare tutto in tokens e caricare su disco. Ok, ma quanto pesa?
+Dipende tutto dalla vocab size. Se usi 65k, te la cavi con uint16 per token, che non è male... Ma è comunque tanto su dataset enormi 
+
+Nel Things.md metti queste considerazioni più:
+- ottimizzazione classi dataloaders
+- i dataloaders devono saper stimare quanto occuperà il dataset in memoria
+
+In più 
+- riscrittura da fresco di Train Transformer V2 (metti amp, rifai il training loop definito da Jamil che mi fa schifo, metti le funzioni di supporto a parte)
+- vorrei che Module integrasse la funzione che ti dice la memoria occupata
 
 ## Training
 - You can start with a lower batch size to encourage the model to overcome sharp minimums (minimums that are deep but small, so they don't allow for good generalization) and gradually increasing it during training because the model gets smarter and needs a cleaner gradient
@@ -122,6 +142,26 @@ Ogni parametro modificabile creaun grado di liberta', quindi, se non vuoi avere 
 
 
 
+
+
+
+
+---
+
+Vecchi scarabocchi AMP:
+- PROBLEMONE: l'approccio attuale di AMP e' un vicolo cieco. Dovrei decorare tutte le funzioni, ma avrei un overhead mostruoso e il wrapper sarebbe attivo anche ad AMP spento. In piu', pytorch funziona a livello di singola operazione, mentre il mio approccio wrappa funzioni grosse. Potrei creare una chiamata aggiuntiva (non wrapper) in tutte le funzioni elementari di Tensor, ma cosi' tutte le forward che usano .data per staccarsi dal grafo non potrebbero mai ricevere il trattamento di AMP. Tutto cio' mi puzza di 3.2: cancelliamo l'uso dei .data (che ci sta, cosi' mi assicuro che tutto funzioni come dico io), modernizziamo AMP e creiamo della logica per far si che i forward con backward custom vengano trattati correttamente (non posso usare no_grad o spacco tutto). Prendila come versione sperimentale perche' non so che danni posso creare a livello di overhead con tutti sti tensori intermedi. **Insomma**, per ora o devio per sfruttare al massimo AMP e spammare ovunque di tensori (insostenibile) o 
+- => pytorch non lavora esattamente a livello di singola operazione, ma di **primitiva**. Ad esempio, std() e' un'operazione che e' composta da tanti calcoli intermedi. Tuttavia, AMP non li vede perche' std e' implementata come operazione a basso livello, in C++. AMP intercetta solo i tensori python.
+Tornando al _tuo_ AMP, per ora potrebbe pure funzionare: gli input sono castati dinamicamente e potrestio decorare solo le operazioni che sono in whitelist perche' tanto gli output sono castati automaticamente a float32 quando incapsuli il risultato nel Tensor.
+  - L'unico problema di questo approccio e' che cosi' crei un rimbalzo continuodi casting se ad esempio hai tre Linear di fila... Posso lavorarci sopra comunque.
+  - Un altro problema e' che le firme del wrapper devono essere giuste perche' args e kwars sono _lentissimi_ e bruciano memoria. Posso fare due decoratori che condividono la logica e hanno firme per funzioni a singoli arg e doppio, ma non mi piace come soluzione.
+  - Piuttosto, vorrei sfruttare di piu' il fatto che i decoratori hanno una porzione di logica che parte **all'avvio della libreria**.
+  - La questione delle copie in fp16 si risolve in fretta, ma non mi piace. Dovrei tenere una copia fissa in memoria, ma allora quale sarebbe il vantaggio?
+
+- nuova idea per AMP: il decortore servira' solo per dire "ehi, controlla se quest'operazione e' safe" e sara' fatto all'avvio. Non avra' nient'altro, quindi zero overhead in runtime. Volendo si puo' anche creare una cache: se l'operazione non e' presente in questo file AMP_cache.json, parte is_safe_in_float16, senno' legge la classificazione (volendo si possono creare impostazioni per resettarla e cosi' via).  Quando si entra nel context, scopo
+
+
+
+
 # Done
 - <strike>Ho implementato .permute() e PermuteBackward per la fusione QKV, che sono **da testare**</strike>
 - <strike>(gia' fatta) Ho implementato la fusione QKV nel caso della self attention, ma c'e' ancora da vedere per la fusione KV (cross attention). ALT! Non so se ha senso farla: io per ora voglio lavorare sugli LLM, che non hanno encoder, quindi e' possibile che non si</strike>
@@ -130,3 +170,16 @@ Ogni parametro modificabile creaun grado di liberta', quindi, se non vuoi avere 
 - for the time being i won't implement inp-place ops. Tehy are funky, bizarre to implement and not recommended for the general use, so I won't bother for now
 - <strike>Problema: la call register_backward_if_needed in contiguous non gestisce il caso in cui la grad_fn e' None perche' parte a cannone con grad_fn.parents() e da' errore. Ha senso eh, devo vedere se i parenti vogliono il gradiente, ma in questo caso che fare? Nella versione originale l'avevo gestita con un if grad_fn is not None, ma ti torna? Ha senso?</strike> Risolto con CloneBackward
 - <strike>FONDAMENTALE: ridurre il tempo di istanza della classe Tensor. Fai di TUTTO per abbassare questa metrica e spaccherai tutto! E rendila piu' leggera se puoi</strike> <strike>non ho trovato bottleneck o altri miglioramenti da fare per ora. Bene!</strike>  E invece trovati! Benvenuto ._fast_init()!
+- <strike>**LE ACTIVATION_FUNCTION HANNO IL __dict__ PERCHE" NON UYSANO GLI SLOTS!!** Ci sono altri casi del genere??</strike>
+- <strike>manca ToBackward</strike>
+- <strike>group and sort the functions of Tensor's class because it's a mess to navigate</strike>
+- change .shape() to .shape
+- <strike>implement masked_fill inplace (if possible)</strike>
+- <strike>ho fixxato i backward in-place, ma molte si possono ancora sfruttare
+  (seguendo le nuove regole), come mask*=cr_grad. Cerca di nuovo
+  'cr_grad *=' e fai queste modifiche</strike>
+- <strike>unisci le grad_check() scrivendone una te da fresco. Scrivi anche perche'
+  i valori < 1e-7 sono trash e spiega meglio cosa fai. Mi piace il consiglio
+  sull'accumulo dell'errore nel for, usa tolerance, chiama .eval() sul Module
+  e sul non usare una lista per approx_grad. Farei tutto in un nuovo file,
+  cosi' le vecchie funzioni rimangono a parte e si potranno cancellare ez </strike>
