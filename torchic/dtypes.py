@@ -7,8 +7,6 @@ from numpy import dtype
 from torchic.settings import CONFIG, bfloat16, is_mixed_precision_enabled, get_mixed_precision_dtype
 import re
 
-import ml_dtypes
-
 
 dtype_map = {
     'int': {

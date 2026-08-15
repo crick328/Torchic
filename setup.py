@@ -64,7 +64,7 @@ extras = {
 
 setup(
     name='Torchic',
-    version='3.2',
+    version='3.3',
     packages=find_packages(),
     install_requires=base_requirements,
     extras_require=extras,

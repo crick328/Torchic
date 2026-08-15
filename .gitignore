@@ -1,0 +1,10 @@
+__pycache__/
+#*.py[cod] <- compilati Python
+tempCodeRunnerFile.py
+.venv/
+.vscode/
+# farei prima a cancellarlo, pero' mi piace
+backup_t_NON_CANCELLARE_HA_I_COMMENTI.py
+kaggle.json
+# non so se sono autorizzato a pubblicarlo
+SG_transaltion_dataset.csv

@@ -1,7 +1,10 @@
 from typing import TYPE_CHECKING
 from torchic.amp import wrappers
-if TYPE_CHECKING:
-    from torchic.cuda_tensor import Tensor
+#if TYPE_CHECKING:
+from torchic.cuda_tensor import Tensor
+from torchic.settings import CUPY_AVAILABLE
+if CUPY_AVAILABLE:
+    import cupy as cp
 
 
 # https://github.com/pytorch/pytorch/blob/v2.13.0/torch/amp/grad_scaler.py
@@ -44,37 +47,54 @@ class GradScaler:
         optim.zero_grad()
 
     '''
-    def __init__(self, scale_factor: int = 2.0**14):
-        self.scale_factor = scale_factor  # da rendere Tensor
+    def __init__(self, scale_factor: int = 2.0**14, _verbose = True):
+        self.scale_factor = Tensor(scale_factor)
         self.overflow_detected = False
         self.growth_factor = 2.0
         self.backoff_factor = 0.5 # used when nan/inf are detected
 
         self.growth_interval = 2000 # every 2000 .step()s it will double scale_factor
         self._num_steps = 0
+        self._verbose = _verbose
 
         # non ho flag per l'underflow perche' cerco gia'
         # di prevenirlo con il rescaling
 
     def scale(self, loss: 'Tensor') -> 'Tensor':
         # d/dL = 1*scale_factor => rescale of all backward gradients
-        return loss*self.scale_factor
+        return loss*self.scale_factor.to(loss.dtype)
     
     def step(self, optim):
         # effettuo il rescaling inverso prima di aggiornare i gradienti accumulati
 
+        # devo sincronizzare o rischio di pulire la cache quando una
+        # stream sta ancora usando i dati
+        # => NON necessario, sono sicuro che se arrivo qua ho finito i calcoli
+        # di backprop
+        #if CUPY_AVAILABLE:
+            #cp.cuda.get_current_stream().synchronize()
         # NOTE: QUA e' dove voglio resettare la amp_cache
+        # questo pero' devo farlo anche con i bfloat!
+        # sposterei questo reset in Optimizer.zer_grad()
         wrappers.amp_cache = {}
 
         for param in optim.params:
-            if not param._device.isfinite(param._grad):
+            #print(param._device, type(param._grad), print(param._grad))
+            # .all() perche' tutti gli elementi devono essere finiti
+            if not param._device.isfinite(param._grad).all():
                 self.overflow_detected = True
+                if self._verbose:
+                    print("Overflow detected!")
                 break
 
-            param._grad /= self.scale_factor
+            #param._grad /= self.scale_factor.data
         
         # aggiorno solo se tutto ok, senno' skippo lo step e butto i grads
         if not self.overflow_detected:
+            for param in optim.params:
+                param._grad /= self.scale_factor.data
+                #param._grad = param._grad/self.scale_factor.to(param.grad.dtype).data
+
             optim.step()
             self._num_steps += 1
         #va fatto fuori, come sempre
@@ -86,15 +106,21 @@ class GradScaler:
         '''
         if self.overflow_detected:
             # riduco lo scale factor
-            self.scale_factor *= self.backoff_factor
+            self.scale_factor.data *= self.backoff_factor
             # resetto variabili utils
             self._num_steps = 0
             self.overflow_detected = False
+
+            if self._verbose:
+                print(f"backing off by {self.backoff_factor}")
         
         elif self._num_steps == self.growth_interval:
             # aumento lo scale factor
-            self.scale_factor *= self.growth_factor
+            self.scale_factor.data *= self.growth_factor
             self._num_steps = 0
+
+            if self._verbose:
+                print(f"scaling off by {self.growth_factor}")
 
     def state_dict(self):
         # memo per dire che devo scrivere un modo per save/load e 

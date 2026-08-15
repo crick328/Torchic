@@ -161,11 +161,15 @@ Torchic 3.2: ordinata classe Tensor, modificato register_backward_if_needed, agg
             ReLU inplace e clamp_. Fix bug critico di backprop causato da operazioni in-place su cr_grad. Da 
             quello che ho testato non ha mai influito sui training, ma era pronto a darmi noie. Lo stesso
             grad passato a due rami paralleli poteva essere modificato da entrambi, causando il caos.
+            Rivisitato e curato check_gradient() per funzionare con layers e tensori singoli e in modo stabile
             Creato il dataset di supporto per MNIST e curato le precedenti classi Dataset e Dataloader.
             Rimpicciolito il grafo generato da draw_graph(), ottimizzato CrossEntropyLoss che prima creava un
             enorme matrice OHE in memoria per applicare ingore_index (e rischiava pure di avere IndexErrors e
             comportamenti non definiti grazie a arr[-100]). Ottimizzata anche la sua backward, che prima
-            computava inutilmente la jacobiana della LogSoftmax
+            computava inutilmente la jacobiana della LogSoftmax.
+            --- sync con GitHub ---
+            
+
 
 
 Transformer: Replica v8 -> Torchic 2.x. Corretti un'infinita' di bug, ha richiesto modifiche alla lib principale e tante cose.

@@ -13,10 +13,10 @@ if VISUAL_AVAILABLE:
 # ogni nodo e' un tensore. Se op e' settata, e' un tensore leaf.
 # Se backward e' True, e' un tensore frutto di una backward
 class Node:
-    def __init__(self, grad_fn, output_shape=None, grad_shape=None, is_leaf=False, requires_grad=False, max_ref_count=None, next_functions=None) -> None:
+    def __init__(self, grad_fn, output_info=None, grad_info=None, is_leaf=False, requires_grad=False, max_ref_count=None, next_functions=None) -> None:
         self.grad_fn = grad_fn
-        self.fwd_shape = output_shape
-        self.in_grad_shape = grad_shape
+        self.fwd_info = output_info
+        self.in_grad_info = grad_info
         self.is_leaf = is_leaf
         self.requires_grad = requires_grad
         self.max_ref_count = max_ref_count
@@ -26,8 +26,8 @@ class Node:
     def __eq__(self, other):
         if isinstance(other, Node):
             return (self.grad_fn == other.grad_fn and
-                    self.fwd_shape == other.fwd_shape and
-                    self.in_grad_shape == other.in_grad_shape and
+                    self.fwd_info == other.fwd_info and
+                    self.in_grad_info == other.in_grad_info and
                     self.is_leaf == other.is_leaf and
                     self.requires_grad == other.requires_grad and
                     self.max_ref_count == other.max_ref_count and
@@ -37,11 +37,18 @@ class Node:
 
     def __hash__(self):
         return hash(
-            (self.grad_fn, self.fwd_shape, self.in_grad_shape, 
+            (self.grad_fn, self.fwd_info, self.in_grad_info, 
              self.is_leaf, self.requires_grad, self.max_ref_count,
              self.next_functions
             )
         )
+
+
+def get_info(data) -> str: 
+    data_shape = data.shape if data.shape != () else "scalar"
+    data_dtype = data.dtype if hasattr(data, "dtype") else type(data)
+
+    return f"{data_shape}, {data_dtype}"
 
 
 def dummy_backward(root_tensor):
@@ -54,12 +61,12 @@ def dummy_backward(root_tensor):
     def get_or_create_node(tensor, grad, _counter):
         if id(tensor) not in seen_tensors_ids:
             # NOTE: potrebbe dare problemi in __eq__
-            output_shape = tensor.data.shape if tensor.data.shape != () else "scalar"
+            output_info = get_info(tensor.data)
+
             if grad is not None:
-            #print(tensor)
-                grad_shape = grad.shape if grad.shape != () else "scalar"
+                grad_info = get_info(grad)
             else:
-                grad_shape = None
+                grad_info = None
 
             if tensor.is_leaf:
                 # creo un nodo di accumulazione
@@ -75,8 +82,8 @@ def dummy_backward(root_tensor):
 
             node = Node(
                     grad_fn=grad_fn_name,
-                    output_shape=output_shape,
-                    grad_shape=grad_shape,
+                    output_info=output_info,
+                    grad_info=grad_info,
                     is_leaf=tensor.is_leaf,
                     requires_grad=tensor.requires_grad,
                     max_ref_count=max_ref_count,
@@ -129,59 +136,6 @@ def dummy_backward(root_tensor):
 
 
 
-
-def trace_backward(tensor):
-    nodes, edges = set(), set()
-    acc_grad_counter = 0
-
-    def _build(tensor, prev_node=None):
-        # NOTE: molto brutto!
-        # Riferisce alla variabile acc_grad_counter definita nella funzione esterna
-        nonlocal acc_grad_counter
-
-        node = Node(
-                    grad_fn=f"{tensor.grad_fn}",
-                    shape=tensor.data.shape,
-                    is_leaf=tensor.is_leaf,
-                    requires_grad=tensor.requires_grad,
-                    next_functions=_format_next_functs(tensor)
-                )
-
-        if node not in nodes:
-            nodes.add(node)
-
-            if prev_node:
-                edges.add((prev_node, node))
-
-            for next_tensor in tensor.grad_fn.next_elems():
-                # se il grafo continua
-                if next_tensor.grad_fn is not None:
-                    _build(next_tensor, node)
-                else:
-                    acc_grad = Node(
-                        # assegno un counter o altrimenti avrebbero lo stesso
-                        # hash e non sarebbe aggiunto a nodes
-                            grad_fn=f"AccumulateGrad{acc_grad_counter}",
-                            shape=next_tensor.data.shape,
-                            is_leaf=next_tensor.is_leaf,
-                            requires_grad=next_tensor.requires_grad,
-                        )
-                    acc_grad_counter += 1
-                    nodes.add(acc_grad)
-                    edges.add((node, acc_grad))
-        # se il nodo e' gia' nel set ma ha altre connessioni
-        elif prev_node:
-            # prendo la sua occorrenza nel set
-            for n in nodes:
-                if n == node:
-                    # aggiungo la connessione
-                    edges.add((prev_node, n))
-                    break
-    _build(tensor)
-
-    return nodes, edges
-
-
 # https://graphviz.org/doc/info/colors.html
 def draw_graph(root_tensor: Tensor, format='png', rankdir='TB', complete_format=True, layout='dot', small=True, dpi=600.0):
     '''
@@ -217,9 +171,7 @@ def draw_graph(root_tensor: Tensor, format='png', rankdir='TB', complete_format=
     #nodes, edges = set(), set()
 
     if root_tensor.grad_fn is not None:
-        #nodes, bw_edges = trace_backward(root_tensor)
         nodes, bw_edges = dummy_backward(root_tensor)
-        #nodes.update(bw_nodes)
     else:
         raise RuntimeError(
             "Unable to trace the backward graph, the given root "
@@ -230,7 +182,7 @@ def draw_graph(root_tensor: Tensor, format='png', rankdir='TB', complete_format=
     for node in nodes:
         dot.node(
             name=str(id(node)),
-            label=_create_label([f"{key}: {value}" for key, value in node.__dict__.items()]) if complete_format else f"{node.grad_fn} {node.in_grad_shape}",
+            label=_create_label([f"{key}: {value}" for key, value in node.__dict__.items()]) if complete_format else f"{node.grad_fn} {node.in_grad_info}",
             shape="record", #"box" if not node.backward else "record",
             #fillcolor="olivedrab3" if not node.is_leaf else "violetred2" if not node.backward else "steelblue2",
             #fillcolor="olivedrab3" if not node.is_leaf else "steelblue2",

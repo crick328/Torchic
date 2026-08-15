@@ -1,5 +1,5 @@
 from torchic.autograd.backprop import ArrayType
-from torchic.autograd.backprop import pool
+from torchic.dtypes import float32
 from collections.abc import Generator
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 from torchic.settings import CUPY_AVAILABLE, CONFIG
 if CUPY_AVAILABLE:
     import cupy as cp
+    from torchic.autograd.cuda.cuda_pools import stream_ring_pool, event_pool
 import random
 import numpy as np
 
@@ -28,6 +29,10 @@ import numpy as np
 # in un nodo di accumulazione perche' gli altri non saranno mai calcolati, il
 # ref_count non si abbassera' e quindi la backward si ferma al nodo di accumulazione.
 # Pytorch riesce a gestirlo, ma non so come
+# NOTE: se osservi oveflow inusuali, prova a forzare in float32 tutte le
+# operazioni di riduzione (ci sono solo .sum()) fatte qui in backward.
+# In caso sappi che devi ricastare il risultato nel tipo di partenza
+# Guarda qua: https://docs.pytorch.org/docs/2.13/notes/numerical_accuracy.html#reduced-precision-reduction-for-fp16-and-bf16-gemms
 
 
 
@@ -44,7 +49,7 @@ class BackwardFunction:
         ref_count (int): counts the number of non-leaf tensors (nodes) that have this
             node as parent. I call them "critical tensor" if `ref_count` is greater than 1
             because they need special treatment during the backward pass.
-        event_register (dict of cp.cuda.Stream: cp.cuda.Event): a dictionary containing
+        partial_grad_events (dict of cp.cuda.Stream: cp.cuda.Event): a dictionary containing
             cuda events recorded on `stream` after partial grad contribution.
             Used to fine-synching all streams involved in the computation of the
             gradient of a critical tensor.
@@ -59,12 +64,12 @@ class BackwardFunction:
     '''
 
     count = 0
-    __slots__ = ("ctx", "ref_count", "event_register", "grad_buffer", "id")
+    __slots__ = ("ctx", "ref_count", "partial_grad_events", "grad_buffer", "id")
 
     def __init__(self, ctx: tuple) -> None:
         self.ctx = ctx
         self.ref_count = 0
-        self.event_register = {}
+        self.partial_grad_events = {}
         self.grad_buffer = {}
         self.id = BackwardFunction.count
         BackwardFunction.count += 1
@@ -104,7 +109,59 @@ class BackwardFunction:
                 return self.ctx[0], parent2
         return self.ctx[0], None
 
-    def accumulate_grad(self, grad: ArrayType, stream: cp.cuda.Stream, using_cuda: bool) -> None:
+    def accumulate_grad(self, grad: ArrayType, stream) -> None:
+        """
+        Safely accumulates the given gradient contribution.
+
+        Args:
+            grad (ArrayType): the gradient to accumulate
+            stream (cp.cuda.Stream): the CUDA stream that is working on it.
+                `None` is used if on CPU.
+
+        Gradient contributions are stored in the attribute `grad_buffer`, which is
+        a dict containing key-value pairs `{stream_id: respective_gradient}`.
+        Everytime a new stream add a contribution, a new entry on the dict is created.
+        This approah allows to avoid data corruption (for example when trying
+        to add a gradient with a partially compute one) and race conditions.
+
+        When training on cpu, then `grad_buffer` will be `{None: accumulated_grad}`
+        because no stream is used (`stream=None`) and so the accumulation can
+        be in-place.
+        """
+
+        # se è la prima volta che questa stream fornisce un contributo
+        if stream not in self.grad_buffer:
+            # aggiungo il primo contributo
+            self.grad_buffer[stream] = grad
+        # senno' sommo su cio' che ha gia' fatto
+        else:
+            # posso sommare in-place, tanto viene schedulato sulla
+            # stessa stream che ha calcolato il pezzo precedente
+            # (e' garantito l'ordine delle ops schedulate sulla stessa stream)
+            # NOTE: non ho dati per verificare che questo non dia problemi
+            # con views o cose simili. So che al momento non si verifica mai,
+            # MA dai un occhio se saltano race conditions.
+            # Nei miei test ci e' sempre e solo entrata la null_stream
+            self.grad_buffer[stream] += grad
+
+        # aggiorno l'evento per il nuovo gradiente parziale
+        # (aspettare il nuovo gia' implica aspettare il vecchio).
+        # La somma dei vari contributi avverra' sulla default_stream,
+        # quindi posso evitare di creare l'evento
+        if stream and stream is not stream_ring_pool.null_stream:
+            if stream not in self.partial_grad_events:
+                # prendo un evento nuovo
+                partial_grad_ready_event = event_pool.get_event()
+            else:
+                # riutilizzo l'evento esistente
+                partial_grad_ready_event = self.partial_grad_events[stream]
+
+            stream.record(partial_grad_ready_event)
+            self.partial_grad_events[stream] = partial_grad_ready_event
+
+
+    '''
+    def __accumulate_grad(self, grad: ArrayType, stream: cp.cuda.Stream, using_cuda: bool) -> None:
         """
         Safely accumulates the given gradient contribution.
 
@@ -134,7 +191,7 @@ class BackwardFunction:
             # aggiungo il primo contributo
             self.grad_buffer[stream] = grad
         # se ho una stream, non e' la null e ha gia' dato un contributo
-        elif using_cuda and stream is not pool.null_stream:
+        elif using_cuda and stream is not stream_ring_pool.null_stream:
             # aggiungo separatamente gli altri contributi per
             # evitare somme in-place su dati non ancora pronti
             self.grad_buffer[f"{stream}_{random.random()}"] = grad
@@ -150,10 +207,11 @@ class BackwardFunction:
         # La somma del gradiente accumulato avverra' sulla default_stream,
         # ma le stream non possono aspettare i loro stessi eventi,
         # quindi non ne creo uno per lei
-        if using_cuda and stream is not pool.default_stream:
-            new_event = cp.cuda.Event()
-            stream.record(new_event)
-            self.event_register[stream] = new_event
+        if using_cuda and stream is not stream_pool.default_stream:
+            partial_grad_ready_event = event_pool.get_event()
+            stream.record(partial_grad_ready_event)
+            self.partial_grad_events[stream] = partial_grad_ready_event
+    '''
 
     def next_elems(self) -> Generator['Tensor']:
         '''
@@ -223,11 +281,13 @@ class AddBackward(BackwardFunction):
         if x.requires_grad:
             # derivata parziale w.r.t. self, cioè x. d/dx(x+a)=1 ==> d/dx(x+y)=1+0,
             # cioè self con i valori a 1.
+            # NOTE: potrebbe dare problemi se non viene fatta la riduzione
+            # perche' e' come se facessi return cr_grad, cr_grad
             grad_x = cr_grad
 
             if x.data.shape != cr_grad.shape:
                 # Ridurre il gradiente alla shape originale di x
-                grad_x = grad_x.sum(axis=tuple(range(cr_grad.ndim - x.data.ndim)))
+                grad_x = grad_x.sum(axis=tuple(range(cr_grad.ndim - x.data.ndim)))#, dtype=float32)
 
         if y.requires_grad:
             # derivata parziale w.r.t. other, cioè y. d/dy(a+y)=1 ==> d/dy(x+y)=0+1,
@@ -236,8 +296,7 @@ class AddBackward(BackwardFunction):
 
             if y.data.shape != cr_grad.shape:
                 # Ridurre il gradiente alla shape originale di y
-                grad_y = grad_y.sum(axis=tuple(range(cr_grad.ndim - y.data.ndim)))
-        
+                grad_y = grad_y.sum(axis=tuple(range(cr_grad.ndim - y.data.ndim)))#, dtype=float32)
         return grad_x, grad_y
 
 
@@ -328,9 +387,12 @@ class DivBackward(BackwardFunction):
         if x.requires_grad:
             # d/dx
             # usando la funzione evito errori div by zero
-            grad_x = x._device.reciprocal(y.data + 1e-8) * cr_grad
-            #grad_x = x._device.reciprocal(y.data + 1e-8)
-            #print(grad_x.shape, cr_grad.shape)
+            # NOTE: non posso fare la mul in-place perche' mi serve
+            # il broadcasting
+            #grad_x = x._device.reciprocal(y.data + 1e-8, dtype=y.data.dtype) * cr_grad
+            #grad_x = 1/(y.data + 1e-8)
+            grad_x = x._device.true_divide(cr_grad, y.data + 1e-8, dtype=cr_grad.dtype)
+            #print(grad_x.dtype, grad_x.shape, cr_grad.shape)
             #grad_x *= cr_grad
 
         if y.requires_grad:
@@ -795,7 +857,7 @@ class ToCopyBackward(BackwardFunction):
         # hai cambiato dtype ma non device
         if dtype != x.dtype and device == x.device:
             # caso di training
-            cr_grad = cr_grad.astype(x.dtype, copy=False)
+            grad_x = cr_grad.astype(x.dtype, copy=False)
         # hai cambiato sicuramente il device e forse anche il dtype
         else:
             # a prescindere che tu mi chieda solo il cambio di
@@ -804,9 +866,9 @@ class ToCopyBackward(BackwardFunction):
 
             if CUPY_AVAILABLE and cr_grad.__class__ == cp.ndarray:
                 cr_grad = cr_grad.get()
-            cr_grad = x._device.asarray(cr_grad, dtype=x.dtype)
+            grad_x = x._device.asarray(cr_grad, dtype=x.dtype)
         
-        return cr_grad, None
+        return grad_x, None
 
 
 

@@ -8,9 +8,9 @@
 # controllo sull'optimizer
 # Llama 3.1 e' stato trainato con float32 per tutta la backward...
 
-from torchic.settings import CUPY_AVAILABLE, get_default_precision, get_mixed_precision_dtype, is_mixed_precision_enabled, set_mixed_precision_enabled
+from torchic.settings import CUPY_AVAILABLE, get_default_precision, get_default_device, is_mixed_precision_enabled, set_mixed_precision_enabled
 from torchic.amp.wrappers import wrapper_single_param, wrapper_double_param, wrapper_act_funct, generic_wrapper
-from torchic.amp.amp_stability import is_safe_in_float16, blacklist, whitelist, to_lower_precision
+from torchic.amp.amp_stability import blacklist, whitelist, to_lower_precision
 import sys
 
 
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 '''
-Come funziona Autocast in PyTorch
+Come funziona Autocast in PyTorch (in teoria)
 E' un meccanismo che casta gli *input* delle funzioni safe in float16.
 Quando una funzione safe e' incontrata ed autocast e' attivo, l'engine
 chiama direttamente *la stessa funzione in versione autocast*, che potrebbe
@@ -50,14 +50,22 @@ direttamente su tutto il layer? Il codice si semplifica e le performance ringraz
 Come funziona il MIO autocast
 Qualsiasi funzione puo' essere decorata con @autocast_operation. Le funzioni
 con questo decoratore saranno analizzate all'avvio della libreria con
-"is_safe_in_float16" e messe in whitelist di conseguenza.
+"is_safe_in_float16" e messe in white/gray/blacklist di conseguenza.
+Non succede nient'altro, quindi nessun overhead senza AMP.
 
-Questa funzione processa solo i primi due argomenti delle funzioni decorate.
+Quando si entra nel context manager di autocast, tutte le funzioni vengono
+prese e temporaneamente sostituite con una loro versione gia' wrappata su
+misura. In questo modo l'overhead e' minimo. A seconda della classificazione
+della funzione, il wrap casta gli input a float16 o 32.
+I parametri originiali dei modelli non vengono toccati e il gradiente viene
+accumulato in float32 (perche' ricevono il gradiente tramite toCopyBackward
+che glielo casta in fp32 prima di passarglielo) ed e' una cosa voluta.
+Se conviene, la copia in float16 viene inserita in cache in modo da non dover
+ricastare lo stesso identico tensore ad ogni forward (amp_cache)
 
-
-Come ogni decorator, autocast_operation altro non e' che un wrapper che si
-avvolge attorno alla funzione decorata. Aggiunge nuova logica e restituisce
-un'altra funzione (gia' chiamata).
+E' stato difficile da impostare bene... Questa e' la soluzione migliore
+che ho trovato per non avere overhead ad AMP spento, per non dover decorare
+tutte le funzioni e per mantenere la sicurezza (niente eval())
 '''
 
 # NOTE: ho una falla di design: questo decoratore ha lo scopo di castare a 
@@ -92,12 +100,23 @@ class autocast:
                 "Unable to use autocast without CUDA because fp16"
                 "operations on CPU are not convenient in Numpy"
             )
-        
-        set_mixed_precision_enabled(True)
-        print(f"is_mixed_precision_enabled: {is_mixed_precision_enabled()}")
-        print(f"get_default_precision: {get_default_precision()}")
 
+        if get_default_device() != "cuda":
+            raise RuntimeError(
+                "You have to use device='cuda' in order to use AMP"
+            )
+
+        # non serve con la nuova logica... Per ora e' solo un flag di
+        # servizio... Ma allora il setter dovrebbe essere "nascosto"
+        set_mixed_precision_enabled(True)
+        #print(f"is_mixed_precision_enabled: {is_mixed_precision_enabled()}")
+        #print(f"get_default_precision: {get_default_precision()}")
+
+        # qui faccio partire il wrap delle funzioni. Senza di questo non
+        # va nulla a prescindere dalle classificazioni fatte dalle altre parti.
         self._set_autocast_wrappers(blacklist, -1)
+        # per ora in whitelist ho anche funzioni con score=0 (incerto)
+        self._set_autocast_wrappers(whitelist, 1)
         self._set_autocast_wrappers(to_lower_precision, 2)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -109,6 +128,9 @@ class autocast:
                 setattr(module, name, func)
 
     def _set_autocast_wrappers(self, category: set, safeness: int):
+        '''
+        La safeness viene passata direttamente ai caster dei singoli wrappers
+        '''
         for module_path, funct_qualname in category:
             # prendo il module
             module = sys.modules[module_path] 
@@ -141,6 +163,7 @@ class autocast:
             if funct_name.endswith("__call__"):
                 # e' la call di una classe, quindi ActivationFunction o
                 # al massimo di un Linear
+                # NO! Puo' essere anche una activation function!
                 wrapper = wrapper_act_funct(funct, safeness)
             else:
                 num_params = len(inspect.signature(funct).parameters)

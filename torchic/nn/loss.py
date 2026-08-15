@@ -3,6 +3,7 @@ from torchic.nn.activations import Softmax, LogSoftmax
 import torchic.autograd.functions as back_op
 from torchic.dtypes import int32, int64
 from torchic.autograd.grad_context import no_grad
+from torchic.amp.amp_stability import autocast_operation
 
 # check derivata
 
@@ -128,6 +129,7 @@ class CrossEntropyLoss:
         self.ignore_index = ignore_index
         self.eps = label_smoothing
 
+    #@autocast_operation
     def __call__(self, x: Tensor, target: Tensor) -> Tensor:
         '''
         This version accepts only a `target` which is an integer
@@ -143,8 +145,11 @@ class CrossEntropyLoss:
         # Potrei fare copia-incolla delle due righe della softmax, ma
         # non mi piace per niente come idea. La logica deve essere
         # centralizzata
+        #print(x.dtype)
         with no_grad():
+            #print(self.log_soft.__call__)
             log_probs = self.log_soft(x).data
+            #print(log_probs.dtype)
 
         # se l'utente vuole azzerare il gradiente associato ad una classe
         if self.ignore_index != -100:

@@ -2,7 +2,7 @@ import sys
 sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.1")
 from torchic import set_default_device, set_default_precision
 # CUDA settings
-from torchic import set_max_async_streams, set_time_threshold_ms, set_use_null
+from torchic import set_num_backward_workers, set_time_threshold_ms, set_use_null
 from torchic import Tensor
 from torchic.tools.visualization.graphs import draw_graph
 from torchic.tools.code_analysis.mem import get_nbytes
@@ -66,7 +66,7 @@ SG_DATASET = False
 #sys.setrecursionlimit(1500)
 set_default_device("cuda")
 set_default_precision(32)
-set_max_async_streams(4)
+set_num_backward_workers(4)
 set_time_threshold_ms(5)
 set_use_null(False)
 #set_use_of_streams(True)

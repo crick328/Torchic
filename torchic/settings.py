@@ -7,6 +7,7 @@ try:
     CUPY_AVAILABLE = True
 except ImportError:
     CUPY_AVAILABLE = False
+    cp = np
 
 
 try:
@@ -17,33 +18,35 @@ except ImportError:
     VISUAL_AVAILABLE = False
 
 
-try:
+if CUPY_AVAILABLE:
     import ml_dtypes
-
     bfloat16 = cp.float16
-    if CUPY_AVAILABLE:
+
+    try:
         bfloat16 = cp.dtype('bfloat16')
         BRAIN_FLOAT_AVAILABLE = True
-    else:
+    except TypeError:
         BRAIN_FLOAT_AVAILABLE = False
-except TypeError:
+        warnings.warn(
+            "CuPy didn't recognize bfloat16. Be sure to be using CuPy v14+."
+            "Install/update it with 'pip install cupy-cuda12x' (without doing"
+            "'pip install cupy' because they go in conflict)"
+            )
+else:
     BRAIN_FLOAT_AVAILABLE = False
-    warnings.warn(
-        "CuPy didn't recognize bfloat16. Be sure to be using CuPy v14+."
-        "Install/update it with 'pip install cupy-cuda12x' (without doing"
-        "'pip install cupy' because they go in conflict)"
-        )
+    bfloat16 = None
+
 
 
 CONFIG = {
     "default_device": "cpu",
+    # questo campo NON e' usato in AMP
     "precision": 32,
     "use_cuda_if_available": False,
     "seed": None,
     "cuda": {
-        "max_async_streams": 4,     # 0 = no use of streams
-        "use_null": False,
-        "time_threshold_ms": 5,
+        "num_backward_workers": 4,     # 0 = no use of streams
+        "time_threshold_ms": 5
     },
     "grad_enabled": True,
     "mixed_precision": {
@@ -165,21 +168,23 @@ def set_seed(seed: int) -> None:
 
 
 # ==== CUDA settings ====
-def get_max_async_streams() -> int:
-    return CONFIG["cuda"]["max_async_streams"]
-
-def get_use_null() -> bool:
-    return CONFIG["cuda"]["use_null"]
+def get_num_backward_workers() -> int:
+    return CONFIG["cuda"]["num_backward_workers"]
 
 def get_time_threshold_ms() -> float:
     return CONFIG["cuda"]["time_threshold_ms"]
 
 
-def set_max_async_streams(i: int) -> None:
-    CONFIG["cuda"]["max_async_streams"] = i
+def set_num_backward_workers(i: int) -> None:
+    '''
+    Change the number of allocated CUDA streams. If set
+    to 0, disables backward parallel computation
+    '''
+    CONFIG["cuda"]["num_backward_workers"] = i
 
-def set_use_null(flag: bool) -> None:
-    CONFIG["cuda"]["use_null"] = flag
+    if CUPY_AVAILABLE:
+        from torchic.autograd.cuda.cuda_pools import stream_ring_pool
+        stream_ring_pool._set_num_streams(i)
 
 def set_time_threshold_ms(f: float) -> None:
     CONFIG["cuda"]["time_threshold_ms"] = f

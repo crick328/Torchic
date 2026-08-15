@@ -2,34 +2,27 @@ Voglio riordinare e riassumere tutto cio' che ho scritto nei txt vari
 
 # Cache
 Cose a cui stavo lavorando:
-- CCELoss. Il codice era raffazzonato e Gemini ha proposto una versione di cui
-  ho controllato forward/backward e sono sani. E' piu' veloce ed occupa meno
-  memoria perche' non usa la tua (brutta) matrice OHE (ma sei matto?!). Hai anche un comportamento indefinito nell'index (che pero' sembra non avere impatto...)
-- rifinitura codice CCE (cosa buttare in backward, type hinting, commenti sia 
-  in backward che in forward)
-  Chissa' quanto altro grasso si puo' tagliare da altre cose mezze implementate! Farei come per grad_check: implementazione a mano da fresco con nuove spiegazioni (il tuo mi sembra superiore in termini di logica)
-- testing AMP. Take the opportunity and rewrite/tidy the old training codes
-  for the Sequential and the messy one of the Transformer!
-- e' tempo di scrivere un po' di test... Soprattutto ora che c'e' il nuovo
-  cannone a rotaie di grad_check()!
-- refine Dataset and Dataloader... They were written frenetically in order
-  to do the very first Transformer training, but they can't stay like this
+- (AMP test) riscrittura da fresco di Train Transformer V2 (metti amp, rifai il training loop definito da Jamil che non me gusta, metti le funzioni di supporto a parte)
+
+
  
-
-
-
 # Next
 - Grad Checkpointing
 - refine Dataset and Dataloader... They were written frenetically in order
   to do the very first Transformer training, but they can't stay like this
 - AMP (https://docs.pytorch.org/docs/2.12/amp.html#module-torch.amp)
-- In-place Ops (for performance and memory). Masked_fill and some activations can also be made in-place
+- <strike>In-place Ops (for performance and memory). Masked_fill and some activations can also be made in-place</strike>
 - kernel fusion (pare basti un decoratore e una funzione che usa solo roba cupy, stile jit). Non so se la differenza e' apprezzabile, prova prima a misurare le differenze sulla sigmoid
 - convertire test nei file in pytests
 - fare test di controllo/confronto su ReLU inplace (preferirei farlo con le
   mie gambe, senza compararmi a PyTorch. Gia' implementati in vari file) e masked_fill_
 - generale: i metodi helpers e tutta la logica in tools e' abbandonata a 
   se' stessa al momento. Quando vuoi curala un po'
+- e' tempo di scrivere un po' di test... Soprattutto ora che c'e' il nuovo
+  cannone a rotaie di grad_check()!
+- rifinitura codice CCE (cosa buttare in backward, type hinting, commenti sia 
+  in backward che in forward)
+  Chissa' quanto altro grasso si puo' tagliare da altre cose mezze implementate! Farei come per grad_check: implementazione a mano da fresco con nuove spiegazioni (il tuo mi sembra superiore in termini di logica)
 
 
 NOTE:
@@ -41,17 +34,19 @@ NOTE:
 ## Memory
 - Implement **gradient checkpointing**, a technique that saves memory by partially computing on the go some operation of the forward pass instead of saving it;
 - Implement **weight tying**: use the same embedding matrix for input and output
-- **Change the optimizer**: Adam occupies a lot of space with his momentum vectors. Try Lion
+- **Change the optimizer**: Adam occupies a lot of space with his momentum vectors. Try Lion or Adam8bit
 - Implement **quantization**
 - Implement an **occupied memory estimator**
 - Implement **Mixed Precision Training (AMP)**
 - Implement **RMSNorm** instead of LayerNorm;
 - Set max_streams to 0 if you don't want to waste additional memory by worth_parallelizing()
 - Precompute the dataset in a binary file (.npy) to keep in non-volatile memory and acces the data by index
+- Implement FP8 Mixed Precision (numpy non li ha ops) (se puoi sfruttare i calcoli accelerati fp8, senno' e' inutile)
+- Try FP4 for MatMuls only (figuriamoci, questi zero)
 
 ## Performance
 - <strike>Implement **QKV fusion** in the self attention blocks in order to compute them in parallel</strike>;
-- Verify if your **CUDA stream infrastructure** is good;
+- <strike>Verify if your **CUDA stream infrastructure** is good</strike>;
 - **Kernel fusion**! I already have written an idea above the forward of Sigmoid
 - It could be useful to check some backward functions that breaks the contiguity of the gradient in order to restore it (for example look at TransposeBackward, MatmulBackward, PermuteBackward). I think that cupy manages things in background, but it's better to learn and to explictly ask for contiguity
 - Implement **gradient accumulation**, a technique that simulates a much bigger batch size. mathematically is very similar too. It should be simple: update the params every $N$ batches, but first take the average of the accumulated gradients (so divide by $N$)
@@ -86,7 +81,7 @@ Nel Things.md metti queste considerazioni più:
 - i dataloaders devono saper stimare quanto occuperà il dataset in memoria
 
 In più 
-- riscrittura da fresco di Train Transformer V2 (metti amp, rifai il training loop definito da Jamil che mi fa schifo, metti le funzioni di supporto a parte)
+
 - vorrei che Module integrasse la funzione che ti dice la memoria occupata
 
 ## Training
@@ -183,3 +178,23 @@ Tornando al _tuo_ AMP, per ora potrebbe pure funzionare: gli input sono castati 
   sull'accumulo dell'errore nel for, usa tolerance, chiama .eval() sul Module
   e sul non usare una lista per approx_grad. Farei tutto in un nuovo file,
   cosi' le vecchie funzioni rimangono a parte e si potranno cancellare ez </strike>
+- <strike>casini: impostare set_num_backward_workers non ha effetto perche'
+  StreamPool viene istanziato con l'avvio della libreria.
+  **Se le forzo a 0**, magicamente non ho piu' problemi con AMP + add in
+  whitelist. **Se lascio le streams parallele e un print ciccione**
+  **in AddBackward**, tutto funziona. **Se rimuovo add da AMP**, funziona
+  => C'E' UNA (altra) RACE CONDITION NEL CODICE DI BACKPROP!<strike>
+- <strike>pulire amp_cache anche con senza GradScaler</strike>
+- <strike>rivedere un attimo il codice di backprop</strike>
+- <strike>in float16 la roba diverge, forse perche GradScaler ha errori/non e' abbastanza
+  incisivo perche' non riesce a contenere gli overflow... Parte una volta e
+  continua senza sosta</strike>
+- <strike>il blfoat sputtana tutto, c'e' da capire cosa succede</strike>
+- <strike>aumentare la size delle matrici su cuda aumenta anche la RAM occupata dal sistema...</strike>
+- <strike>i float16 miracolosamente sembrano funzionare, ma occupano piu' spazio deio 32 e vanno alla stessa velocita'... Lo gpu usage va a picchi tra l'altro, non va bene.</strike>
+- <strike>in generale ilm float16 ha impatto zero. Per carita', per ora e' limitato solo alla matmul, ma e' li' che dovrebbe avere tanta accelerazione con i tensor cores. C'e' qualcosa che non va. magari crea una funzione che replica le operazioni di un linear e vedi cosa succede. In teoria l'input e gli output della matmul dovrebbero essere fp16 e dovrebbe crearsi una entry nella cache di cuda. I gradienti dovrebbero accumularsi in fp32. I tensori messi nei ctx dovrebbero essere fp16 (e almeno loro dovrebbero concedermi di risparmiare un po' di memoria). La somma al momento e' volontariamente senza @autocast_operation perche' tanto in teoria dovrebbe prendere e sputare un float16 senza casting di mezzo (cosa che parrebbe non succedere perche' il modello sputa un predict in fp32 anche se usa solo operazioni con safeness 1 e 2)</strike>
+- <strike>CCELoss. Il codice era raffazzonato e Gemini ha proposto una versione di cui
+  ho controllato forward/backward e sono sani. E' piu' veloce ed occupa meno
+  memoria perche' non usa la tua (brutta) matrice OHE (ma sei matto?!). Hai anche un comportamento indefinito nell'index (che pero' sembra non avere impatto...)</strike>
+- <strike>refine Dataset and Dataloader... They were written frenetically in order
+  to do the very first Transformer training, but they can't stay like this</strike>

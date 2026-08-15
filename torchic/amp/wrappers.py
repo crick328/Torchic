@@ -7,6 +7,10 @@ if TYPE_CHECKING:
 
 
 amp_cache = {}
+USE_CACHE=False
+FORCE_CACHE=False
+
+# NOTE: si puo' pensare a dun wrapper dedicato per le riduzioni
 
 def wrapper_single_param(func, safeness):
     def cast_if_needed(x: 'Tensor'):
@@ -22,13 +26,20 @@ def wrapper_double_param(func, safeness):
     return cast_if_needed
 
 def wrapper_act_funct(func, safeness):
-    def cast_if_needed(self, other):
-        other = _manage_arg_dtype(other, safeness)
-        return func(self, other)
+    def cast_if_needed(self, x):
+        x = _manage_arg_dtype(x, safeness)
+        return func(self, x)
     return cast_if_needed
 
+# RAFFAZZONATA
 def generic_wrapper(func, safeness):
-    pass
+    def cast_if_needed(self, *args, **kwargs):
+        if self.__class__.__name__ == "Tensor":
+            self = _manage_arg_dtype(self, safeness)
+        if len(args) > 0 and args[0].__class__.__name__ == "Tensor":
+            args[0] = _manage_arg_dtype(args[0], safeness)
+        return func(self, *args, **kwargs)
+    return cast_if_needed
 
 
 '''
@@ -50,7 +61,6 @@ If the tensor does not require grad, an inplace conversion is made, otherwise it
 and then converted. This is done in order to avoid any variation to the master weights (original
 parameters of the network in fp32) because their update have to be done in fp32.
 '''
-
 
 from torchic.settings import CONFIG, CUPY_AVAILABLE
 from torchic.dtypes import DTYPE_MAP_V2
@@ -77,15 +87,15 @@ def _manage_arg_dtype(arg: 'Tensor', safeness: int) -> 'Tensor':
 
         # per il momento non faccio nulla con le funzioni neutre
         case 0: pass
-        case 1: pass
+        #case 1: pass
 
-        case 2:
+        case 1|2:
             # devo lavorare in fp16
 
             # non ha senso salvare in cache tensori intermedi
             # che sono da buttare al prossimo forward, percio'
             # mi assicuro che siano leaf
-            if arg.is_leaf:
+            if FORCE_CACHE or arg.is_leaf and arg.requires_grad and USE_CACHE:
                 tensor_id = id(arg)
 
                 # questo dict va pulito...

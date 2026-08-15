@@ -357,8 +357,8 @@ class Tensor:
         
         if self._grad_fn is not None:
             raise RuntimeError(
-                "Mi stai chiedendo di sovrascrivere una grad function non nulla, "
-                "ma questo romperebbe la backpropagation."
+                "Mi stai chiedendo di sovrascrivere una grad function non nulla "
+                f"{self._grad_fn}, ma questo romperebbe la backpropagation."
                 )
 
         #print(f"{grad_fn_cls.__name__}, {ctx[0].shape()}")
@@ -452,7 +452,6 @@ class Tensor:
     @autocast_operation
     def matmul(self, other: 'Tensor') -> 'Tensor':
         # self: vector, other: matrix
-        #print(self.dtype, other.dtype)
         output = Tensor(self.data @ other.data)
         
         output.register_backward_if_needed(back_op.MatmulBackward, self, other)
@@ -481,6 +480,7 @@ class Tensor:
         # PyTorch perche' e' definita solo per gli int
         return Tensor(self.data & other.data, dtype=self.dtype)
 
+    @autocast_operation
     def __add__(self, other: 'Tensor') -> 'Tensor':
         output = Tensor(self.data + other.data)
         
@@ -569,7 +569,8 @@ class Tensor:
 
         output.register_backward_if_needed(back_op.SumBackward, self, dim, keepdim)
         return output
-    
+
+    @autocast_operation
     def mean(self, dim: int=None, keepdim: bool=False) -> 'Tensor':
         """
         Returns the mean of all dims as scalar Tensor object if dim is None,

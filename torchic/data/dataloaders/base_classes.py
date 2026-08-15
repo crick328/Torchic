@@ -27,10 +27,10 @@ class Dataset:
             # it can also load custom data:
         >>> dataset_raw = load_dataset(
                 "csv", 
-                data_files="torchic\datas\SG_en-it\SG_transaltion_dataset.csv", 
+                data_files="torchic/datas/SG_en-it/SG_transaltion_dataset.csv", 
                 delimiter="|",                      # specifica il separatore
                 column_names=["name", "en", "it"],  # (ri)nomino le colonne
-                usecols=["en", "it"],               # ignoro la colonna 'name'
+                usecols=["en", "it"],               # ignoro la colonna "name"
                 split="train"                       # carico tutto come unico split
             )
         >>> train_test_split = dataset_raw.train_test_split(test_size=0.025)
@@ -40,18 +40,18 @@ class Dataset:
 
         >>> import os
         >>> import pandas as pd
-        >>> os.environ['KAGGLE_CONFIG_DIR'] = r'torchic\datasets'
+        >>> os.environ["KAGGLE_CONFIG_DIR"] = r"torchic/datasets"
         >>> from kaggle.api.kaggle_api_extended import KaggleApi
 
         >>> api = KaggleApi()
         >>> api.authenticate()
         >>> api.dataset_download_files(
-                dataset='oddrationale/mnist-in-csv',
+                dataset='oddrationale//mnist-in-csv',
                 path="./data",
                 unzip=True
             )
-        >>> train_ds = Dataset(pd.read_csv('data/mnist_train.csv'))
-        >>> test_ds = Dataset(pd.read_csv('data/mnist_test.csv'))
+        >>> train_ds = Dataset(pd.read_csv("data/mnist_train.csv"))
+        >>> test_ds = Dataset(pd.read_csv("data/mnist_test.csv"))
     '''
 
     def __init__(self, dataset) -> None:

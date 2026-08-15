@@ -1,7 +1,9 @@
 from torchic.cuda_tensor import Tensor
 from torchic.settings import get_current_backend
 import numpy as np
-import cupy as cp
+from torchic.settings import CUPY_AVAILABLE
+if CUPY_AVAILABLE:
+    import cupy as cp
 
 
 # zeros

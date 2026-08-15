@@ -5,7 +5,6 @@ import warnings
 import textwrap
 import inspect
 import re
-import torchic
 
 
 
@@ -38,7 +37,7 @@ BASIC_OPS = {
         # cross entropy
     },
     "ignore": {
-        'register_backward_if_needed', 'ascontiguousarray'
+        'register_backward_if_needed', 'ascontiguousarray', 'print'
     },
     "mixed_precision": {
         # lista di operazioni che vorresti eseguire a precisione ridotta.
@@ -147,7 +146,7 @@ def is_safe_in_float16(func) -> int:
     
     # se ha solo safe_ops
     if not unclassified_ops:
-        if operations.issubset(MIXED_PRECISION_OPS):
+        if (operations-IGNORE_OPS).issubset(MIXED_PRECISION_OPS):
             # quest'operazione contiene SOLO operazionic che voglio in mixed
             return 2
         return 1
@@ -159,6 +158,8 @@ def is_safe_in_float16(func) -> int:
 
 seen_functions = set()
 # qua potrei aggiungere le funzioni selezionate dall'utente...?
+# questi sono i miei pool di funzioni che verranno poi gestite dal ctx di autocast
+# in modalita' jit. Per il resto questa classificazione non fa altro
 whitelist = set()
 blacklist = set()
 to_lower_precision = set()
@@ -175,34 +176,30 @@ to_lower_precision = set()
 # wrappata al lancio del codice!
 def autocast_operation(funct):
     """
-    Decorator used to mark a function that should be analyzed for
-    mixed precision compatibility.
+    Decorator used to mark a function that should be analyzed (during the startup
+    of the library) for mixed precision compatibility.
 
     Functions with @autocast_operation are not guaranteed to be executed in mixed precision.
-    Internally, the amp module has a whitelist, a blacklist and an automatic classification system.
-    Functions can be either manually added to each of the two lists or they can be evalued
-    by the system, which chooses the classification based on the mathematical operations used
-    inside the function.
-
-    This piece of code is responsible for casting tensors to fp16 if 'funct' is elegbile,
-    but it also has to convert back to fp32 if it isn't.
-
-    Decoratore per applicare il casting agli argomenti delle operazioni.
-    Intercetto la chiamata alla funzione e casto i suoi args prima che venga eseguita
+    Internally, the amp module has a `whitelist`, a `blacklist` and a
+    `to_lower_precision` sets of functions.
+    They are automatically evaluated by the system with `is_safe_in_float16()`,
+    which chooses the classification based on the mathematical operations used inside
+    the function.
+    Based on the safeness score, functions are grouped in
+    - -1: `blacklist`.
+    - 0: `whitelist` (for the time being).
+    - 1: `whitelist`.
+    - 2: `to_lower_precision`.
+    Still, the functions remain untouched until, evetually, the user uses
+    `with autocast()` ctx.
     """
-    # NOTE: il codice "di mezzo" interno a autocast_operation()
-    # e esterno a casted_function() viene ESEGUITO SOLO ALL'AVVIO della
-    # libreria! Di conseguenza, il check is_mixed_precision_enabled() va
-    # messo nella funzione piu' interna o altrimenti questa logica non
-    # partira' mai (perche' di default la mixed_precision e' off)
-    #if not is_mixed_precision_enabled():
-        #return funct
+    # NOTE: questo codice viene ESEGUITO SOLO ALL'AVVIO della
+    # libreria!
 
     # il __qualname__ e' il nome della funzione piu' la sua radice (serie di references ".")
     # una funzione con lo stesso nome ma presente in due parti differenti del codice
     # saranno trattate come diverse
-
-    # come detto prima, questo codice e' eseguito all'avvio
+    
     if funct.__qualname__ not in seen_functions:
         print(f"{funct.__qualname__} safe? {is_safe_in_float16(funct)}")
         # al momento mi baso solo sul classificatore automatico che
@@ -217,13 +214,14 @@ def autocast_operation(funct):
             case 0:
                 # NOTE: per ora ignoro le funzioni in whitelis, tanto
                 # non verranno wrappate per ora
+                # E invece meglio wrappare
 
                 # qua in teoria lo faccio in base a quanto voglio rischiare
                 # Potrei anche metterle in graylist, ma per ora faccio cosi'
-                #whitelist.add((funct.__module__, funct.__qualname__))
+                whitelist.add((funct.__module__, funct.__qualname__))
                 pass
             case 1:
-                #whitelist.add((funct.__module__, funct.__qualname__))
+                whitelist.add((funct.__module__, funct.__qualname__))
                 pass
             case 2:
                 to_lower_precision.add((funct.__module__, funct.__qualname__))

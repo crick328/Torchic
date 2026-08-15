@@ -43,8 +43,8 @@ def branch_time_estimator(tensor) -> float:
 
     assert tensor.device == "cuda", f"Time estimation is only available on CUDA. Given tensor is on {tensor.device}"
     
-    # non avendo il gradiente, lo randomizzo
-    grad = cp.random.rand(*tensor.shape(), dtype=tensor.dtype)
+    # non avendo il gradiente, lo randomizzo (TypeError: cupy.random only supports float32 and float64)
+    grad = cp.random.rand(*tensor.shape(), dtype=cp.float32)#dtype=tensor.dtype)
     cost = back_funct_time_complexity(tensor.grad_fn, grad)
     
     if tensor.grad_fn.ref_count > 1:
@@ -71,13 +71,15 @@ def branch_time_estimator(tensor) -> float:
     return cost
 
 
-def worth_parallelizing(parent_x, parent_y) -> bool|int:
+def worth_parallelizing(parent_x, parent_y) -> int:
     '''
         min_ms: minimum amount of milliseconds of gpu computation required
         in order to candidate a branch for asynchronous computation with
         streams. NOTE: a value smaller than 0.5 ms creates instabilities
         (loss spikes, cramming of streams) and errors (loss=nan), probably
         because the scheduler doesn't have enough room to work.
+
+        returns 0 if not worth, else -1 if left is heavier or +1 otherwise
     '''
     # NOTE: attualmente i tuoi rami non superano manco i 5 MILLISECONDI
     # di tempo gpu! Ecco perche' usare le streams non conviene ora!
@@ -90,13 +92,13 @@ def worth_parallelizing(parent_x, parent_y) -> bool|int:
     # un cambio di stream per il ramo maggiore
     # A prescindere che chiedano il grad, non converrebbe
     if parent_x.is_leaf or parent_y.is_leaf:
-        return False
+        return 0
 
     # se uno dei due deve accumulare, non ha senso perche'
     # una stream deve subito sincronizzarsi per mettersi in
     # attesa dell'altra
     if parent_x.grad_fn.ref_count > 1 or parent_y.grad_fn.ref_count > 1:
-        return False
+        return 0
     
     # condizioni soddisfatte. Verifico quale dei due rami e' piu'
     # dispendioso in termini di tempo impiegato
@@ -110,9 +112,9 @@ def worth_parallelizing(parent_x, parent_y) -> bool|int:
     # piu' di 5 ms
     min_ms = CONFIG['cuda']["time_threshold_ms"]
     if cost_x > cost_y:
-        return -1 if cost_x > min_ms else False
+        return -1 if cost_x > min_ms else 0
     else:
-        return 1 if cost_y > min_ms else False
+        return 1 if cost_y > min_ms else 0
     
 # posso pensare ad un sistema che, al secondo backward pass, guarda i dati
 # del grafo in cache e valuta se non runnare un ramo perche' il prossimo

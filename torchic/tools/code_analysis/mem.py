@@ -4,7 +4,9 @@ from torchic.autograd.functions import BackwardFunction
 from torchic.autograd.backprop import ArrayType
 from torchic.cuda_tensor import Tensor
 import numpy as np
-import cupy as cp
+from torchic.settings import CUPY_AVAILABLE
+if CUPY_AVAILABLE:
+    import cupy as cp
 import sys
 
 

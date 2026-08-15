@@ -1,7 +1,12 @@
 from torchic.cuda_tensor import Tensor
 from torchic.tools.helpers import zeros_like
 from collections.abc import Generator
+from torchic.amp import wrappers
 import inspect
+from torchic.dtypes import float32
+from torchic.settings import CUPY_AVAILABLE
+if CUPY_AVAILABLE:
+    import cupy as cp
 
 
 # non mi convince, potrebbe solo condividere zero_grad
@@ -10,6 +15,10 @@ class Optimizer:
         raise NotImplementedError
 
     def zero_grad(self, set_to_none=True) -> None:
+        #if CUPY_AVAILABLE:
+            #cp.cuda.runtime.deviceSynchronize()
+        wrappers.amp_cache = {}
+        
         for param in self.parameters:
             param._grad = None if set_to_none else param._device.zeros(param._grad.shape, param.data.dtype)
 
@@ -232,6 +241,10 @@ class AdamV4:
             # compute bias-corrected first and second moments
             m_hat = m / beta1_t
             v_hat = v / beta2_t
+
+            assert m_hat.dtype == float32
+            assert v_hat.dtype == float32
+            assert self.eps.dtype == float32
 
             #param.data -= self.lr * (m.data / beta1_t) / (v._device.sqrt(v.data / beta2_t) + self.eps)
             param.data -= self.lr * m_hat / (v_hat**0.5 + self.eps) #+1e-4)

@@ -4,6 +4,7 @@ import torchic.nn.initializers as inits
 from torchic.nn.module import Module
 from torchic.tools.helpers import zeros
 from torchic.autograd.grad_context import no_grad
+from torchic.amp.amp_stability import autocast_operation
 
 
 # Linear Layer (corrisponde al Dense layer di Tensorflow se quest'ultimo è settato con activation=None)
@@ -37,7 +38,8 @@ class Linear(Module):
         self.has_bias = bias
         self.weights = _init_funct(n_input, n_output, **_init_kwargs)
         self.bias = zeros((n_output,), requires_grad=True) if bias else None
-    
+
+    #@autocast_operation
     def __call__(self, x: Tensor) -> Tensor:
         x = x.matmul(self.weights)
         # NOTE: l'eventuale broadcasting del bias viene gestito in autonomia dalle lib
