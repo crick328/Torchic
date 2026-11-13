@@ -1,5 +1,9 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.1")
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from torchic import set_default_device, set_default_precision
 # CUDA settings
 from torchic import set_num_backward_workers, set_time_threshold_ms, set_use_null
@@ -8,7 +12,7 @@ from torchic.tools.visualization.graphs import draw_graph
 from torchic.tools.code_analysis.mem import get_nbytes
 from torchic.tools import helpers
 from torchic.nn.models.transformer_config import get_config
-from torchic.data.dataloaders.transformer_dataset import BilingualDataset
+from torchic.data.dataloaders.bilingual_dataloader import BilingualDataset
 from torchic.data.dataloaders.base_classes import DataLoader
 from torchic.nn.optim import AdamV3, AdamV4
 from torchic.nn.loss import CrossEntropyLoss
@@ -48,7 +52,7 @@ WARMUP = False
 LABEL_SMOOTHING = 0.1
 DROPOUT = 0.1
 DS_LEN = False
-DYNAMIC_MASKING = False
+DYNAMIC_PADDING = False
 MY_STACK = True
 LEGACY_MODEL = False
 ALLOW_FUSION = True
@@ -315,14 +319,14 @@ def get_dataset(model_config):
                                 model_config["lang_src"],
                                 model_config["lang_trg"],
                                 model_config["seq_len"],
-                                dynamic_masking=DYNAMIC_MASKING)
+                                dynamic_padding=DYNAMIC_PADDING)
     val_ds = BilingualDataset(train_test_split["test"],
                                 tokenizer_src,
                                 tokenizer_trg,
                                 model_config["lang_src"],
                                 model_config["lang_trg"],
                                 model_config["seq_len"],
-                                dynamic_masking=DYNAMIC_MASKING)
+                                dynamic_padding=DYNAMIC_PADDING)
     
     print(len(val_ds))
     

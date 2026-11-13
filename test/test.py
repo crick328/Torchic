@@ -6,7 +6,11 @@ import numpy as np
 #import torch
 import time
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from torchic import Tensor
 from torchic import nn
 from torchic.tools.visualization.graphs import draw_graph

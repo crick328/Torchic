@@ -22,9 +22,16 @@ from torchic.tools.sequences import causal_mask, create_pad_mask
 DTYPE = uint16 #int64
 
 
+# alla fine questa classe e' necessaria perche' non ho pretokenizzato
 class BilingualDataset(Dataset):
+    '''
+    Class designed for translation tasks.
+
+    dynamic padding: instead of always reaching seq_len, it adds PAD tokens
+        until it reaches the longest sentence in the current batch.
+    '''
     def __init__(self, dataset, tokenizer_src, tokenizer_trg, src_lang: str, trg_lang: str,
-                 seq_len: int, dynamic_masking: bool=True) -> None:
+                 seq_len: int, dynamic_padding: bool=True) -> None:
         super().__init__(dataset)
 
         self.tok_src = tokenizer_src
@@ -32,7 +39,7 @@ class BilingualDataset(Dataset):
         self.src_lang = src_lang
         self.trg_lang = trg_lang
         self.seq_len = seq_len
-        self.dynamic_masking = dynamic_masking
+        self.dynamic_padding = dynamic_padding
         
         # src e trg tokenizer condividono gli stessi token speciali
         # devo specificare il dtype
@@ -49,7 +56,7 @@ class BilingualDataset(Dataset):
     # precomputare tutta sta roba aiuterebbe a gestire bene la memoria?
     def __getitem__(self, index) -> dict[str: Tensor]:
         src_target_pair = self.dataset[index]
-
+        
         src_text = src_target_pair[self.src_lang]
         trg_text = src_target_pair[self.trg_lang]
         
@@ -58,27 +65,19 @@ class BilingualDataset(Dataset):
         enc_input_tokens = Tensor(self.tok_src.encode(src_text).ids, dtype=DTYPE)
         dec_input_tokens = Tensor(self.tok_trg.encode(trg_text).ids, dtype=DTYPE)
 
-        if not self.dynamic_masking:
-            # calcolo il numero di [PAD] tokens che devo aggiungere
-            # per arrivare a seq_len (togliendo dal conto [SOS] e [EOS])
-            n_pad_tokens_enc = self.seq_len - len(enc_input_tokens) -2
-            # qua invece e' solo -1 perche' [EOS] non e' presente nell'
-            # input del decoder (perche'?)
-            n_pad_tokens_dec = self.seq_len - len(dec_input_tokens) -1
+        # calcolo il numero di [PAD] tokens che devo aggiungere
+        # per arrivare a seq_len (togliendo dal conto [SOS] e [EOS])
+        n_pad_tokens_enc = self.seq_len - len(enc_input_tokens) -2
+        if n_pad_tokens_enc < 0:
+            raise RuntimeError(f"Encoder sequence exceeds seq_len.")
 
-            # verifico che la seq_len scelta sia sufficiente per rappresentare
-            # la frase piu' lunga in tutto il ds
-            if n_pad_tokens_enc < 0:
-                raise RuntimeError(
-                    f"The seq_len chosen ({self.seq_len}) isn't enough to fit the "
-                    f"sentence {src_text} to give to the encoder."
-                    )
-            if n_pad_tokens_dec < 0:
-                raise RuntimeError(
-                    f"The seq_len chosen ({self.seq_len}) isn't enough to fit the "
-                    f"sentence {trg_text} to give to the decoder."
-                    )
-            
+        # qua invece e' solo -1 perche' [EOS] non e' presente nell'
+        # input del decoder (perche'?)
+        n_pad_tokens_dec = self.seq_len - len(dec_input_tokens) -1
+        if n_pad_tokens_dec < 0:
+            raise RuntimeError("Decoder sequence exceeds seq_len.")
+
+        if not self.dynamic_padding:
             # aggiungo [SOS], [EOS] e [PAD] fino a raggiungere la seq_len
             encoder_input = cat(
                     [
@@ -86,9 +85,6 @@ class BilingualDataset(Dataset):
                         enc_input_tokens,
                         self.eos_token,
                         self.pad_token.expand(n_pad_tokens_enc, )
-                        #Tensor([self.pad_token.data] * n_pad_tokens_enc, dtype=DTYPE)
-                        # da modificare
-                        #Tensor(self.pad_token._device.tile(self.pad_token.data, n_pad_tokens_enc), dtype=DTYPE)
                     ],
                 dtype=DTYPE)
             
@@ -97,8 +93,6 @@ class BilingualDataset(Dataset):
                         self.sos_token,
                         dec_input_tokens,
                         self.pad_token.expand(n_pad_tokens_dec, )
-                        #Tensor([self.pad_token.data] * n_pad_tokens_dec, dtype=DTYPE)
-                        #Tensor(self.pad_token._device.tile(self.pad_token.data, n_pad_tokens_dec), dtype=DTYPE)
                     ],
                 dtype=DTYPE)
             
@@ -109,9 +103,6 @@ class BilingualDataset(Dataset):
                         dec_input_tokens,
                         self.eos_token,
                         self.pad_token.expand(n_pad_tokens_dec, )
-                        # e se facessi un broadcast?
-                        #Tensor([self.pad_token.data] * n_pad_tokens_dec, dtype=DTYPE)
-                        #Tensor(self.pad_token._device.tile(self.pad_token.data, n_pad_tokens_dec), dtype=DTYPE)
                     ],
                 dtype=DTYPE)
 
@@ -127,6 +118,7 @@ class BilingualDataset(Dataset):
             decoder_mask = causal_mask(decoder_input, dtype=DTYPE) & decoder_mask
         else:
             # i PAD saranno aggiunti in fase di batching
+            # => aggiungo solo [SOS] e [EOS]
             encoder_input = cat([self.sos_token, enc_input_tokens, self.eos_token], dtype=DTYPE)
             decoder_input = cat([self.sos_token, dec_input_tokens], dtype=DTYPE)
             target = cat([dec_input_tokens, self.eos_token], dtype=DTYPE)
@@ -152,73 +144,19 @@ from torchic.tools.helpers import cat, ones, full
 from torchic.tools.helpers import stack
 import random
 
-class DataLoaderForLLM(DataLoader):
+class BilingualDataLoader(DataLoader):
     def __init__(self, dataset: Dataset, batch_size: int, shuffle: bool=True, my_stack=True) -> None:
         super().__init__(dataset, batch_size, shuffle)
         self.my_stack = my_stack
 
     @staticmethod
-    def my_stack_on_batch_dim(dict_list: list[dict[str, Tensor]], dynamic_masking, pad_token: Tensor):
-        # estraggo i dati
-        encoder_input = [dct['encoder_input'] for dct in dict_list]
-        decoder_input = [dct['decoder_input'] for dct in dict_list]
-        target = [dct['target'] for dct in dict_list]
-
-        if dynamic_masking:
-            # calcolo le lunghezze massime
-            max_enc_len = max(len(seq) for seq in encoder_input)
-            max_dec_len = max(len(seq) for seq in decoder_input)
-            max_trg_len = max(len(seq) for seq in target)
-            #max_dec_trg_len = max(max_dec_len, max_trg_len)
-
-            # metto i token di padding
-            # (seq_len,) -> (max_len,) -> (batch, max_len)
-            encoder_input = stack(
-                pad_sequence(seq, max_enc_len, pad_token) for seq in encoder_input
-            )
-            decoder_input = stack(
-                pad_sequence(seq, max_dec_len, pad_token) for seq in decoder_input
-            )
-            target = stack(
-                pad_sequence(seq, max_trg_len, pad_token) for seq in target
-            )
-
-            # creo le maschere
-            # (batch, max_len) -> (batch, 1, 1, max_len)
-            encoder_mask = (encoder_input != pad_token).unsqueeze(1).unsqueeze(1)
-            # (batch, 1, max_len) & (batch, max_len, max_len) -> (batch, 1, max_len, max_len)
-            decoder_mask = ((decoder_input != pad_token).unsqueeze(1) & causal_mask(decoder_input, dim=1)).unsqueeze(1)
-        else:
-            # aggiungo la batch_dim e accumulo su di essa
-            encoder_input = stack(encoder_input)
-            decoder_input = stack(decoder_input)
-            target = stack(target)
-            encoder_mask = stack(dct['encoder_mask'] for dct in dict_list)
-            decoder_mask = stack(dct['decoder_mask'] for dct in dict_list)
-
-        # gestisco le frasi in chiaro (generators, lazy)
-        src_text = [d['src_text'] for d in dict_list]
-        trg_text = [d['trg_text'] for d in dict_list]
-
-        return {
-            'encoder_input': encoder_input,
-            'decoder_input': decoder_input,
-            'encoder_mask': encoder_mask,
-            'decoder_mask': decoder_mask,
-            'target': target,
-            'src_text': src_text,
-            'trg_text': trg_text
-        }
-
-
-    @staticmethod
-    def stack_on_batch_dim(dict_list: list[dict[str, Tensor]], dynamic_masking, pad_token: Tensor):
+    def stack_on_batch_dim(dict_list: list[dict[str, Tensor]], dynamic_padding, my_stack, pad_token: Tensor):
         """
         Combina un elenco di dizionari su una nuova dimensione batch e genera maschere opzionali.
         
         Args:
             dict_list: Elenco di dizionari contenenti tensori con chiavi comuni.
-            dynamic_masking: Booleano che abilita o disabilita il padding dinamico.
+            dynamic_padding: Booleano che abilita o disabilita il padding dinamico.
             pad_token: Token utilizzato per il padding.
         
         Returns:
@@ -229,38 +167,52 @@ class DataLoaderForLLM(DataLoader):
         decoder_input = [dct['decoder_input'] for dct in dict_list]
         target = [dct['target'] for dct in dict_list]
 
-        if dynamic_masking:
+        if dynamic_padding:
             # calcolo le lunghezze massime della batch
             max_enc_len = max(len(seq) for seq in encoder_input)
             max_dec_trg_len = max(max(len(seq) for seq in decoder_input), max(len(seq) for seq in target))
 
-            # creo delle matrici di [PAD] in modo da applicare
-            # in batch il padding alle sequenze
-            batch_size = len(dict_list)         # (la posso prendere da self)
-            device = encoder_input[0].device
-            dtype = encoder_input[0].dtype
+            if my_stack:
+                encoder_input = stack(
+                    pad_sequence(seq, max_enc_len, pad_token) for seq in encoder_input
+                )
+                decoder_input = stack(
+                    pad_sequence(seq, max_dec_trg_len, pad_token) for seq in decoder_input
+                )
+                target = stack(
+                    pad_sequence(seq, max_dec_trg_len, pad_token) for seq in target
+                )
+            else:
+                # creo delle matrici di [PAD] in modo da applicare
+                # in batch il padding alle sequenze
+                batch_size = len(encoder_input)         # (la posso prendere da self)
+                device = encoder_input[0].device
+                dtype = encoder_input[0].dtype
 
-            #encoder_input_pad = pad_token * ones((batch_size, max_enc_len), dtype=dtype, device=device)
-            #decoder_input_pad = pad_token * ones((batch_size, max_dec_trg_len), dtype=dtype, device=device)
-            #target_pad = pad_token * ones((batch_size, max_dec_trg_len), dtype=dtype, device=device)
+                #encoder_input_pad = pad_token * ones((batch_size, max_enc_len), dtype=dtype, device=device)
+                #decoder_input_pad = pad_token * ones((batch_size, max_dec_trg_len), dtype=dtype, device=device)
+                #target_pad = pad_token * ones((batch_size, max_dec_trg_len), dtype=dtype, device=device)
 
-            encoder_input_pad = full((batch_size, max_enc_len), pad_token, dtype=dtype, device=device)
-            decoder_input_pad = full((batch_size, max_dec_trg_len), pad_token, dtype=dtype, device=device)
-            target_pad = full((batch_size, max_dec_trg_len), pad_token, dtype=dtype, device=device)
+                # mi creo delle matrici piene di [PAD]
+                encoder_input_pad = full((batch_size, max_enc_len), pad_token, dtype=dtype, device=device)
+                decoder_input_pad = full((batch_size, max_dec_trg_len), pad_token, dtype=dtype, device=device)
+                target_pad = full((batch_size, max_dec_trg_len), pad_token, dtype=dtype, device=device)
 
-            # copio in-place le sequenze nelle matrici di [PAD]
-            for i, (enc_seq, dec_seq, trg_seq) in enumerate(zip(encoder_input, decoder_input, target)):
-                encoder_input_pad[i, :len(enc_seq)] = enc_seq
-                decoder_input_pad[i, :len(dec_seq)] = dec_seq
-                target_pad[i, :len(trg_seq)] = trg_seq
+                # copio in-place le sequenze nelle matrici di [PAD]
+                for i, (enc_seq, dec_seq, trg_seq) in enumerate(zip(encoder_input, decoder_input, target)):
+                    encoder_input_pad[i, :len(enc_seq)] = enc_seq
+                    decoder_input_pad[i, :len(dec_seq)] = dec_seq
+                    target_pad[i, :len(trg_seq)] = trg_seq
 
-            # riassegno i valori
-            encoder_input = encoder_input_pad
-            decoder_input = decoder_input_pad
-            target = target_pad
+                # riassegno i valori
+                encoder_input = encoder_input_pad
+                decoder_input = decoder_input_pad
+                target = target_pad
 
             # creo le maschere
+            # (batch, max_len) -> (batch, 1, 1, max_len)
             encoder_mask = (encoder_input != pad_token).unsqueeze(1).unsqueeze(1)
+            # (batch, 1, max_len) & (batch, max_len, max_len) -> (batch, 1, max_len, max_len)
             decoder_mask = (causal_mask(decoder_input, dim=1) & (decoder_input != pad_token).unsqueeze(1)).unsqueeze(1)
         else:
             # devo solo fare stacking
@@ -295,11 +247,15 @@ class DataLoaderForLLM(DataLoader):
         for i in range(0, len(self.indices), self.batch_size):
             batch_indices = self.indices[i:i + self.batch_size]
             batch = [self.dataset[idx] for idx in batch_indices]
+            # questo purtroppo non posso usarlo perche' BilingualDataset
+            # non supporta piu' di un idx per volta tramite __getitem__(),
+            # o meglio, non sa come tokenizzare il testo
+            #batch = self.dataset[batch_indices]
+            print("AAAA")
+            print(batch)
 
-            if not self.my_stack:
-                yield self.stack_on_batch_dim(batch, self.dataset.dynamic_masking, self.dataset.pad_token)
-            else:
-                yield self.my_stack_on_batch_dim(batch, self.dataset.dynamic_masking, self.dataset.pad_token)
+            yield self.stack_on_batch_dim(batch, self.dataset.dynamic_padding, self.my_stack, self.dataset.pad_token)
+
 
     
 # https://youtu.be/ISNdQcPhsts?feature=shared&t=5734 

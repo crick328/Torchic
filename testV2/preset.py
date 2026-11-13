@@ -1,6 +1,10 @@
 import torch
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Torchic_repo")
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 import torchic
 from torchic.tools.code_analysis.gradient_checking import check_gradient
 from torchic.tools.visualization.graphs import draw_graph

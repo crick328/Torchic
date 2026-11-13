@@ -1,5 +1,5 @@
 from preset import torchic, compare_tensors
-from torchic.data.dataloaders.transformer_dataset import BilingualDataset as MyBD
+from torchic.data.dataloaders.bilingual_dataloader import BilingualDataset as MyBD
 from torchic.data.dataloaders.base_classes import DataLoader as MyDL
 from jamil.jamil_dataset import BilingualDataset as JamilBD
 from torch.utils.data import DataLoader as JamilDL
@@ -17,13 +17,13 @@ from tokenizers.models import WordLevel
 from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
 
-from torchic.data.dataloaders import transformer_dataset
+from torchic.data.dataloaders import bilingual_dataloader
 from torchic import set_default_device
-transformer_dataset.DTYPE = torchic.int64
+bilingual_dataloader.DTYPE = torchic.int64
 
 NUM_SAMPLES = 2000
 BATCH_SIZE = 20
-DYNAMIC_MASKING = True
+DYNAMIC_PADDING = True
 MY_STACK = True
 DEBUG_COMPARISON = False
 BATCH_TO_SKIP = 0
@@ -72,7 +72,7 @@ train_ds_raw = ds_raw.take(NUM_SAMPLES)
 # ==== Inizio zona di test ====
 
 jamil_train_ds = JamilBD(train_ds_raw, tokenizer_src, tokenizer_tgt, "en", "it", 320)
-my_train_ds = MyBD(train_ds_raw, tokenizer_src, tokenizer_tgt, "en", "it", 320, dynamic_masking=DYNAMIC_MASKING)
+my_train_ds = MyBD(train_ds_raw, tokenizer_src, tokenizer_tgt, "en", "it", 320, dynamic_padding=DYNAMIC_PADDING)
 
 jamil_train_dataloader = JamilDL(jamil_train_ds, batch_size=BATCH_SIZE, shuffle=False)
 my_train_dataloader = MyDL(my_train_ds, batch_size=BATCH_SIZE, shuffle=False, my_stack=MY_STACK)

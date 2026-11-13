@@ -35,6 +35,10 @@ ArrayType = Union[np.ndarray, Optional['cp.ndarray']]
 # lo casti come tale e poi se la vede la funzione. Tanto l'utente non fa altro
 # che creare un tensor prima di fare l'op, tantovale automatizzare
 
+# NOTE: la priorita' e' mettere @autocast_operation su operazioni che coinvolgono
+# i tensori della rete. Se invece un'operazione prende un singolo tensore, con
+# molta probabilita' e' un tensore intermedio e il tipo si propaga da solo
+
 
 # https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html
 
@@ -463,7 +467,8 @@ class Tensor:
 
         output.register_backward_if_needed(back_op.SqrtBackward, self, output.data)
         return output
-    
+
+    @autocast_operation
     def exp(self):
         output = Tensor(self._device.exp(self.data))
 
@@ -617,8 +622,9 @@ class Tensor:
             n -= 1
 
         std = self._device.sqrt( (numerator ** 2).sum(axis=dim, keepdims=True) / n )
+        # dovrebbe essere piu' veloce rispetto a **
+        #std = self._device.sqrt( (numerator*numerator).sum(axis=dim, keepdims=True) / n )
         output = Tensor(std.squeeze()) if not keepdim else Tensor(std)
-        #output = Tensor(std)
         
         output.register_backward_if_needed(back_op.StdBackward, self, dim, numerator, n*std, keepdim)
         return output

@@ -1,11 +1,15 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from torchic import Tensor, set_default_device
 from torchic.tools.visualization.graphs import draw_graph
 from torchic.tools.code_analysis.mem import get_nbytes
 #import torchic.nn as nn
 from torchic.nn.models.transformer_config import get_config
-from torchic.data.dataloaders.transformer_dataset import BilingualDataset, causal_mask
+from torchic.data.dataloaders.bilingual_dataloader import BilingualDataset, causal_mask
 from torchic.data.dataloaders.base_classes import DataLoader
 from torchic.nn.optim import AdamV3
 from torchic.nn.loss import CrossEntropyLoss

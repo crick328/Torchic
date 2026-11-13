@@ -9,7 +9,7 @@ from math import ceil
 from torchic.dtypes import int64
 
 
-class Dataset:
+class _Dataset:
     '''
     Universal wrapper class for both `datasets` Hugging Face package
     and `kaggle`.
@@ -103,7 +103,91 @@ class Dataset:
         # prendo n (subset_size) indici unici tra quelli iniziali
         indices = rng.sample(range(total_size), subset_size)
 
-        return Subset(self.dataset, indices, self.dataset_type)
+        return Subset(self.dataset, indices)
+
+
+class Dataset:
+    '''
+    Takes a dataset as a `datasets` Hugging Face package or csv,
+    which is converted to the HF format.
+
+    Example::
+
+        >>> from datasets import load_dataset
+        >>> mnist = Dataset(load_dataset("mnist", split="train"))
+
+            # it can also load custom data:
+        >>> dataset_raw = load_dataset(
+                "csv", 
+                data_files="torchic/datas/SG_en-it/SG_transaltion_dataset.csv", 
+                delimiter="|",                      # specifica il separatore
+                column_names=["name", "en", "it"],  # (ri)nomino le colonne
+                usecols=["en", "it"],               # ignoro la colonna "name"
+                split="train"                       # carico tutto come unico split
+            )
+        >>> train_test_split = dataset_raw.train_test_split(test_size=0.025)
+        >>> train_ds = Dataset(train_test_split["train"])
+
+    Example with Kaggle::
+
+        >>> import os
+        >>> import pandas as pd
+        >>> os.environ["KAGGLE_CONFIG_DIR"] = r"torchic/datasets"
+        >>> from kaggle.api.kaggle_api_extended import KaggleApi
+
+        >>> api = KaggleApi()
+        >>> api.authenticate()
+        >>> api.dataset_download_files(
+                dataset='oddrationale//mnist-in-csv',
+                path="./data",
+                unzip=True
+            )
+        >>> train_ds = Dataset(pd.read_csv("data/mnist_train.csv"))
+        >>> test_ds = Dataset(pd.read_csv("data/mnist_test.csv"))
+    '''
+
+    __slots__ = ("dataset",)
+
+    def __init__(self, dataset) -> None:
+        # gestione Kaggle o dataset su csv
+        if isinstance(dataset, pd.DataFrame):
+            dataset = HFDataset.from_pandas(dataset)
+        self.dataset = dataset
+    
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+    def __getitem__(self, idx: list[int] | int):
+        # Hugging Face gestisce già in automatico int, slice e list[int]
+        return self.dataset[idx]
+
+    def subset(self, fraction: float = 0.1, seed: int=42):
+        """
+        Returns a fraction of the original dataset.
+        
+        Args:
+            fraction (float): La frazione del dataset da selezionare (default: 0.1).
+            seed (int): Seed per la riproducibilità (default: 42).
+            
+        Returns:
+            Dataset: Un nuovo oggetto Dataset contenente il subset.
+        """
+        if not 0 < fraction <= 1:
+            raise ValueError("La frazione deve essere compresa tra 0 e 1.")
+
+        total_size = len(self)
+        subset_size = int(total_size * fraction)
+        # imposto un seed, ma lo faccio su un generatore locale
+        # per non avere impatto altrove
+        rng = random.Random(seed)
+        # prendo n (subset_size) indici unici tra quelli iniziali
+        indices = rng.sample(range(total_size), subset_size)
+
+        print("Sono usato!")
+
+        return Subset(self.dataset, indices)
+        #return Dataset(self.dataset.select(indices))
+
 
 
 class Subset(Dataset):
@@ -122,9 +206,6 @@ class Subset(Dataset):
         self.indices = indices
 
     def __getitem__(self, idx: list[int] | int):
-        # reindirizzo al __getitem__ del Dataset
-        #if isinstance(idx, list):
-            #return self.dataset[[self.indices[i] for i in idx]]
         return self.dataset[self.indices[idx]]
 
     def __len__(self):
@@ -162,16 +243,18 @@ class DataLoader:
         
         for i in range(0, len(self.indices), self.batch_size):
             batch_indices = self.indices[i:i + self.batch_size]
-            batch = [self.dataset[idx] for idx in batch_indices]
+            #batch = [self.dataset[idx] for idx in batch_indices]
 
             #yield stack(batch)
-            yield self.universal_stacker(batch)
+            #yield self.universal_stacker(self.dataset[batch_indices])
+            yield self.dataset[batch_indices]
 
     def universal_stacker(self, batch):
         """
         Combina una lista di elementi (batch) in un'unica struttura dati batchata.
         Supporta: dict, tuple, np.ndarray, torch.Tensor, int, float, str.
         """
+        print("Universal stacker")
         elem = batch[0]
         elem_type = type(elem)
 

@@ -15,8 +15,10 @@ def get_MNIST_dataset():
 class Mnist(Dataset):
     # questo invece sei costretto a definirlo a mano
     def __getitem__(self, idx):
-        # non converto la label in Tensor, sarebbe uno spreco
+        # NOTA: datasets mi fa lo stack ancor prima che mi arrivi
+        # come argomento della classe, quindi non ho bisogno di
+        # usare universal_stacker (per ora)
         return {
             "image": Tensor(self.dataset[idx]["image"]),
-            "label": self.dataset[idx]["label"]
+            "label": Tensor(self.dataset[idx]["label"])
         }

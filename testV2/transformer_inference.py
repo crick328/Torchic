@@ -10,7 +10,7 @@ import cupy as cp
 import matplotlib.pyplot as plt
 import numpy as np
 
-torchic.set_default_device("cuda")
+torchic.set_default_device("cpu")
 
 
 VISUALIZE_ENCODER_HEADS = True
@@ -71,9 +71,9 @@ def inference(text: str):
         return None, None
 
 
-    for name, param in model.parameters(trainable_only=False, with_names=True):
-        assert param.device == 'cuda'
-        assert type(param.data) == cp.ndarray, f"{name}, {type(param.data)}"
+    #for name, param in model.parameters(trainable_only=False, with_names=True):
+        #assert param.device == 'cuda'
+        #assert type(param.data) == cp.ndarray, f"{name}, {type(param.data)}"
 
 
     encoder_input = encoder_input.view(1, encoder_input.size())

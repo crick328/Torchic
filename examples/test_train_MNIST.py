@@ -1,4 +1,10 @@
-from preset import torchic
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import torchic
 from torchic import nn
 from torchic.tools.visualization.graphs import draw_graph
 from torchic.nn.models.save_load import save, load_architecture
@@ -8,27 +14,25 @@ from torchic.dtypes import float32
 from torchic.amp import autocast
 from torchic.amp.grad_scaler import GradScaler
 from tqdm import tqdm
-#import cupy as cp
-#cp.cuda.set_allocator(None)
 
 # non fare softmax + SGD o stai chiedendo di avere vanishing gradients!
 
 # global settings
-DEVICE = "cpu"
+DEVICE = "cuda"
 PROFILER = False
 
 # test settings
 INPLACE_RELU = True
 
 # CUDA settings
-ENABLE_AMP = False
+ENABLE_AMP = True
 USE_BFLOAT16 = False
 SCALING_FACTOR = 2.0**14 # 2.0**14
 STREAMS = 0
 
 # training settings
 EPOCHS = 1
-BATCH_SIZE = 1000
+BATCH_SIZE = 10000
 LR = 0.001 #0.001
 
 
@@ -50,13 +54,16 @@ test_dataloader = DataLoader(test, BATCH_SIZE)
 #identity_matrix = torchic.Tensor(np.identity(10), dtype=int8)
 
 
+# Benchmark net
 height, width = 28, 28
 model = nn.Sequential(
-    nn.Linear(height*width, 500),
+    nn.Linear(height*width, 10000),
     nn.ReLU(INPLACE_RELU),
-    nn.Linear(500, 250),
+    nn.Linear(10000, 5000),
     nn.ReLU(INPLACE_RELU),
-    nn.Linear(250, 10),
+    nn.Linear(5000, 1000),
+    nn.ReLU(INPLACE_RELU),
+    nn.Linear(1000, 10),
     # softmax sulla dimensione delle classi: l'ultima
     #nn.Softmax(-1)
     #nn.Sigmoid()

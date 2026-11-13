@@ -1,5 +1,9 @@
 import sys
-sys.path.insert(1, r"C:\Users\admin\Desktop\NN Lab\Projects\Torchic\Torchic 3.2")
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from torchic import nn
 from torchic.data.dataloaders.my_mnist import AutoMnist
 from torchic.tools.training import metrics

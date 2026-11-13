@@ -1,7 +1,7 @@
 from jamil import jamil_transformer as jamil_T
 from preset import torchic, create_random_tensors, backward_and_compare, equalize_layer, compare_tensors, compare_modules
 from torchic.nn.models import transformer as my_T
-from torchic.data.dataloaders.transformer_dataset import causal_mask
+from torchic.data.dataloaders.bilingual_dataloader import causal_mask
 from torchic import randint
 import torch
 from torch.nn import Transformer as SalsicciaAffumicataBuonaBuona

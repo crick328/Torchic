@@ -1,32 +1,37 @@
-# la funzione da approssimare sara' sqrt.
-# mi consente di usare la ReLU e mi fa sperimentare
-# cosa fara' la rete quando ricevera' un punto che non
-# fa parte del suo dominio
+import sys
+from pathlib import Path
 
-from preset import torchic
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from torchic import nn, Tensor, set_default_precision
 from torchic.nn.models.save_load import save, load_architecture
 import matplotlib.pyplot as plt
+from os.path import exists
+from os import mkdir
 import numpy as np
 import imageio
 
 
+# ====== Settings ======
 
-EPOCHS = 200
-BATCH_SIZE = 20
-TRAINING_SAMPLES = 580
-TEST_SAMPLES = 80
+EPOCHS = 45
+GRAD_ACCUM = 20
+TOTAL_SAMPLES = 880
+TEST_SAMPLES = 80 # presi dal totale
 LR = 0.001
-CHOSEN_FUNCTION = lambda x: np.cos(2*x) #np.sqrt(x)
-DOMAIN = (-4, 4)
+# metto il +1 per poter sfruttare la ReLU
+CHOSEN_FUNCTION = lambda x: np.cos(2*x) + 1
+DOMAIN = (-3, 3)
 
 FRAME_SAMPLES_RATE = 200
 SAMPLE_POINTS = np.linspace(DOMAIN[0], DOMAIN[1], TEST_SAMPLES)
-PATH = r"testV2\sqrt"
-frames = []
+PATH = r"examples/gif_frames"
 
+#set_default_precision(32)
 
-set_default_precision(64)
+if not exists(PATH):
+    mkdir(PATH)
 
 
 # La rete prendera' e restituira' uno scalare float perche'
@@ -34,15 +39,17 @@ set_default_precision(64)
 model = nn.Sequential(
     nn.Linear(1, 64),
     nn.ReLU(),
-    nn.Linear(64, 128),
+    nn.Linear(64, 32),
+    #nn.ReLU(),
+    #nn.Linear(32, 64),
     nn.ReLU(),
-    nn.Linear(128, 64),
-    nn.ReLU(),
-    nn.Linear(64, 1)
+    nn.Linear(32, 1)
 )
 
 
+# ====== Helper function ======
 
+frames = []
 def visualize_fit(model, x_values: list, subname: str):
     x_values = list(x_values)
     true_y = [CHOSEN_FUNCTION(x) for x in x_values]
@@ -62,41 +69,33 @@ def visualize_fit(model, x_values: list, subname: str):
     plt.savefig(f'{PATH}\plot {subname}.png')
     plt.close()
 
-    #plt.show()
-    
-    # Aggiunge l'immagine al frame
     frames.append(imageio.imread(f'{PATH}\plot {subname}.png'))
-    #exit()
 
 
+# ==== Dataset Generation ====
 
-training_points = set()
+training_points = []
 test_points = []
+unique_x = np.random.uniform(DOMAIN[0], DOMAIN[1], TOTAL_SAMPLES)
 
-unique_x = np.random.uniform(DOMAIN[0], DOMAIN[1], TRAINING_SAMPLES)
-#unique_x = np.linspace(0, 100, TRAINING_SAMPLES)
 for x in unique_x:
     y = CHOSEN_FUNCTION(x)
-    training_points.add( (Tensor([[x]]), Tensor([[y]])) )
-
-#print(f"Generazione del dataset finita. Punto randomico: {training_points.pop()}")
+    training_points.append( (Tensor([[x]]), Tensor([[y]])) )
 
 while len(test_points) != TEST_SAMPLES:
     test_points.append(training_points.pop())
 
-training_points = list(training_points)
 
-
+# ====== Training loop ======
 
 loss_fn = nn.MSELoss()
 optim = nn.SGD(model.parameters(), lr=LR)
 
-
-# Training loop
 indices = np.linspace(0, len(training_points)-1, num=len(training_points), dtype=np.int32)
 
 for epoch in range(0, EPOCHS):
     counter = 0
+    epoch_loss = 0
     np.random.shuffle(indices)
 
     for i in indices:
@@ -107,20 +106,20 @@ for epoch in range(0, EPOCHS):
         
         loss = loss_fn(predicted, point[1])
         loss.backward()
+        epoch_loss += loss.data
 
-        if counter % BATCH_SIZE == 0:
+        if counter % GRAD_ACCUM == 0:
             optim.step()
             optim.zero_grad()
-            print(f"Epoch: {epoch+1}/{EPOCHS}, loss: {float(loss.data) :.2f}", flush=True)
         
         if counter % FRAME_SAMPLES_RATE == 0 or counter == 1:
             visualize_fit(model, SAMPLE_POINTS, f"Epoch {epoch}, iter {counter}")
 
         #optim.lr = optim.lr/10
+    print(f"Epoch: {epoch+1}/{EPOCHS}, epoch mean loss: {float(loss.data.mean()) :.2f}", flush=True)
 
 
-
-# Validation
+# ====== Validation ======
 correct=0
 ATOL = 0.1
 
@@ -132,12 +131,10 @@ for x, y in test_points:
 print(f"Validation score: {correct/TEST_SAMPLES * 100 :0.1f}% correct points")
 
 
-print(model(Tensor([[4]])))
-print(model(Tensor([[2]])))
-print(model(Tensor([[0]])))
-save(model, filename=f"{PATH}\cos_net[{DOMAIN[0]}-{DOMAIN[1]}]")
-
-
 # Salva la GIF
-output_file = 'training_progress.gif'
+print("Preparing training animation gif...")
+output_file = 'examples/training_progress.gif'
 imageio.mimsave(output_file, frames, duration=0.5)  # `duration` regola la velocità dei frame
+print("Done! You can see it in examples/training_progress.gif!")
+
+#save(model, filename=f"{PATH}\cos_net[{DOMAIN[0]}-{DOMAIN[1]}]")

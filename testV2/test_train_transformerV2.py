@@ -1,14 +1,17 @@
-#import sys
-#sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Torchic_repo")
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from torchic import set_default_device, set_default_precision
 # CUDA settings
 from torchic import set_num_backward_workers, set_time_threshold_ms
 from torchic.tools.visualization.graphs import draw_graph
 from torchic.tools.code_analysis.mem import get_nbytes
 from torchic.nn.models.transformer_config import get_config
-from torchic.data.dataloaders.transformer_dataset import BilingualDataset, DataLoaderForLLM
-#from torchic.data.dataloaders.base_classes import DataLoader
-from torchic.nn.optim import AdamV3, AdamV4
+from torchic.data.dataloaders.bilingual_dataloader import BilingualDataset, BilingualDataLoader
+from torchic.nn.optim import AdamV4
 from torchic.nn.loss import CrossEntropyLoss
 from torchic.nn.models.save_load import save, load_checkpoint
 from torchic.nn.models.transformer import create_transformer, TransformerV2
@@ -21,18 +24,14 @@ from tokenizers.models import WordLevel
 from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
 
-
 import os
-import random
 import math
 
 from tqdm import tqdm
 
-# prima di far partire un training serio, farei due cose:
-# 1) implementazione reload modello + checkpoint
-# 2) validation test perche' la loss non e' cosi' esplicativa
-
-# Questo codice va rifinito
+# NOTE: probabilmente anche questi dataloaders hanno un bottleneck!
+# Controlla il codice per vedere se puoi sfruttare lo stacking nativo
+# e vedi che ti dice il profiler (ovviamente solo con una epoca)
 
 set_seed(42)
 
@@ -44,7 +43,7 @@ WARMUP = False
 LABEL_SMOOTHING = 0.1
 DROPOUT = 0.1
 DS_LEN = False
-DYNAMIC_MASKING = False
+DYNAMIC_PADDING = False
 MY_STACK = True
 LEGACY_MODEL = False
 ALLOW_FUSION = True
@@ -53,7 +52,7 @@ SG_DATASET = False
 DRAW_GRAPH=False
 
 
-set_default_device("cpu")
+set_default_device("cuda")
 set_default_precision(32)
 set_num_backward_workers(4)
 set_time_threshold_ms(5)
@@ -274,14 +273,14 @@ def get_dataset(model_config):
                                 model_config["lang_src"],
                                 model_config["lang_trg"],
                                 model_config["seq_len"],
-                                dynamic_masking=DYNAMIC_MASKING)
+                                dynamic_padding=DYNAMIC_PADDING)
     val_ds = BilingualDataset(train_test_split["test"],
                                 tokenizer_src,
                                 tokenizer_trg,
                                 model_config["lang_src"],
                                 model_config["lang_trg"],
                                 model_config["seq_len"],
-                                dynamic_masking=DYNAMIC_MASKING)
+                                dynamic_padding=DYNAMIC_PADDING)
 
     print(len(val_ds))
     
@@ -302,8 +301,8 @@ def get_dataset(model_config):
     print(f"Max length of src lang: {max_len_src}")
     print(f"Max length of trg lang: {max_len_trg}")
 
-    train_dataloader = DataLoaderForLLM(train_ds, batch_size=model_config["batch_size"], shuffle=True, my_stack=MY_STACK)
-    val_dataloader = DataLoaderForLLM(val_ds, batch_size=1, shuffle=True, my_stack=MY_STACK)
+    train_dataloader = BilingualDataLoader(train_ds, batch_size=model_config["batch_size"], shuffle=True, my_stack=MY_STACK)
+    val_dataloader = BilingualDataLoader(val_ds, batch_size=1, shuffle=True, my_stack=MY_STACK)
 
     return train_dataloader, val_dataloader, tokenizer_src, tokenizer_trg
 

@@ -115,8 +115,12 @@ class Module(metaclass=ForceSlots):
     def eval(self) -> None:
         self._set_training_mode(False)
 
+    # per attivare/disattivare layers come il dropout
     def _set_training_mode(self, flag: bool):
+        # itero sugli attributi (slots) di self
         for name, elem in self:
+            # se trovo un attributo che si chiama "training"
+            # => non funzia se mi dimentico il nome giusto, mmh...
             if name == "training":
                 setattr(self, name, flag)
             

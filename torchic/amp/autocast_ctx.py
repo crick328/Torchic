@@ -127,6 +127,10 @@ class autocast:
             for name, func in self.original_functions[module].items():
                 setattr(module, name, func)
 
+    # mi sa che questo approccio genera troppo CPU overhead...
+    # Dovrei evitare di modificare le funzioni originali e "semplicemente"
+    # reinderizzare la chiamata (anche semplicemente ad una copia della
+    # funzione ma wrappata) che pero' persiste in memoria
     def _set_autocast_wrappers(self, category: set, safeness: int):
         '''
         La safeness viene passata direttamente ai caster dei singoli wrappers

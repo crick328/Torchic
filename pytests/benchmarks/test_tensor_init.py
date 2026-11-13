@@ -2,7 +2,11 @@ import pytest
 import numpy as np
 import torch
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.1")
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 import torchic
 #from ..utils import create_random_tensors, backward_and_compare
 

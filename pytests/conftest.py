@@ -25,7 +25,11 @@ testare il caricamento di pesi sulla GPU.
 import pytest
 import sys
 import torch
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.1")
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 import torchic
 
 

@@ -1,7 +1,11 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from torchic.nn.models.save_load import load_architecture
-from torchic.data.dataloaders.transformer_dataset import causal_mask
+from torchic.data.dataloaders.bilingual_dataloader import causal_mask
 from torchic import Tensor
 from torchic.tools import helpers
 from test_train_transformer import bleu_score, get_or_build_tokenizer

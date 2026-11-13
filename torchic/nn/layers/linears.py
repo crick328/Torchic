@@ -133,6 +133,7 @@ class Dropout(Module):
 
     def __init__(self, p: float=0.5):
         self.p = p
+        # NOTE: nome importante per essere disattivato con .eval()
         self.training = True
         self.scale = Tensor(1.0 / (1.0 - self.p))
 

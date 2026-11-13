@@ -1,5 +1,9 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.2")
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from torchic import nn, set_default_precision, set_seed
 from torchic.autograd.grad_context import no_grad
 from torchic.cuda_tensor import Tensor

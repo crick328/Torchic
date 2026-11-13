@@ -1,9 +1,38 @@
 Voglio riordinare e riassumere tutto cio' che ho scritto nei txt vari
 
 # Cache
-Cose a cui stavo lavorando:
-- (AMP test) riscrittura da fresco di Train Transformer V2 (metti amp, rifai il training loop definito da Jamil che non me gusta, metti le funzioni di supporto a parte)
+Facciamo una cosa... Il codice di training non e' un granche' e a te
+non interessa la task di traduzione... E allora riscrivi da zero (senza
+fare mash-up) la logica di training per il decoder-only! Tanto e'
+li' che vuoi andare a parare. Cosi' puoi anche metterti all'opera
+per i dataloaders...
+E allora perche' stai investendo ancora tempo sull'altro? Al massimo ci ritornerai,
+ma non ti mettere dei pali inutili (ma ora che ci penso... Il DS di Steins-Gate
+e' abbastanza grande? Idem per Umar Jamil. Opus ha solo 32k pairs!).
+Fai quello che ti attira! Fanculo che non
+hai le SWIglu, RoPE e attenzioni fighe! Anzi, meglio che non le hai, cosi'
+fai le cose un passo per volta! Tanto prima, in ogni caso, devi fare
+il training loop, la versione senza encoder e i dataloaders (che per ora
+sara).
+Tra l'altro, questa cosa del rifare il training era partita perche' dovevi
+testare l'impatto di AMP, lol... Mettilo nel nuovo codice di training. E metti dei plot per vedere le distrib. del dataset
 
+Cose a cui stavo lavorando:
+- bisogna pretokenizzare tutto il corpus (ma fare le maschere dinamiche solo
+  durante il batching)
+- alcuni commenti sono ridondanti... Toglili
+
+(questi decadono con la riscrittura per LLM)
+- scrivi eval transformer multi-batch
+- ricapisci e **commenta** il codice di training del Transformer + funzioni
+  ausiliarie
+- i dataset/dataloader del transformer vanno migliorati. Tokenizzi
+  ogni volta che fai __getitem__ e non sfrutti per niente la parallelizzazione
+  (come era prima con MNIST dataset). <strike>Tra l'altro, ha senso mantenere il
+  supporto per Kaggle? Penso che tutto possa essere convertito in un HFdataset
+  e conviene perche' e' scritto bene (meglio che lavorare con Pandas alla buona)</strike>
+- (AMP test) riscrittura da fresco di Train Transformer V2 (metti amp, rifai il training loop definito da Jamil che non me gusta, metti le funzioni di supporto a parte)
+- l'inference non va perche' non sposta i params su cuda... Forse e' vecchio
 
  
 # Next
@@ -28,6 +57,14 @@ Cose a cui stavo lavorando:
 NOTE:
 - Not _every_ operation has to be executed on GPU! See PermuteBackward to understand what I mean
 ---
+
+# Generics
+- SNELLIRE! Hai mille file di test, roba vecchia (my_mnist e relativi dataloaders,
+  Jamil, ecc.), cose ridondanti!
+- vorrei rendere piu' utile Dataset... Oppure deprecarla del tutto. Ad esempio,
+  sarebbe bello se fosse lei a convertire il dataset in HF Arrow under the hood,
+  senza che mi sbatto io. Allo stesso tempo, dovrebbe sfruttarne le features
+  tramite interfaccia amichevole/in linea con PyTorch
 
 
 # Optimizations

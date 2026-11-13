@@ -1,5 +1,9 @@
 import sys
-sys.path.insert(1, "C:/Users/admin/Desktop/NN Lab/Projects/Torchic/Torchic 3.0 Beta")
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from torchic import nn, Tensor, rand, set_default_device
 from torchic.nn.models.save_load import load_architecture, save, preview_safetensor, load_checkpoint
 from torchic.tools.code_analysis.mem import get_nbytes
