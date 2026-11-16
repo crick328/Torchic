@@ -582,7 +582,37 @@ class Tensor:
         else only of the selected dim.
 
         Args:
-            dim (int): 
+            dim (int): dimension on witch to calculate the mean. If 'None', 
+                it will be calculated on all dimensions and a scalar will
+                be returned. If '-1', the last dim will be used;
+            keepdim (bool): if false, removes the reduced dimension
+
+        Example::
+
+            >>> x = Tensor([
+                    [1.1, 2.2, 3.3],
+                    [4.4, 5.5, 6.6]
+                ])
+            >>> y = x.mean(dim=0)
+            >>> y
+                Tensor([
+                    [2.75, 3.85, 4.95]
+                ]) (1, 3)
+            >>> q = x.mean(dim=-1, keepdim=True)
+            >>> q
+                Tensor([
+                    [2.2],
+                    [5.5]
+                ]) (2, 1)
+            >>> k = x.mean(dim=1)
+            >>> k
+                Tensor([
+                    2.2,
+                    5.5]
+                ) (2,)
+            >>> v = x.mean()
+            >>> v
+                Tensor(3.85) ()
         """
         output = Tensor(self._device.mean(self.data, axis=dim, keepdims=keepdim))
 
@@ -603,6 +633,13 @@ class Tensor:
         
         output.register_backward_if_needed(back_op.VarBackward, self, dim, mean, n, keepdim)
         return output
+
+    def _std(self, dim: int=None, keepdim=False, unbiased=True):
+        '''
+        Returns standard deviation calculated using .var()
+        without a tailored backward.
+        '''
+        return self.var(dim, keepdim, unbiased).sqrt()
 
     def std(self, dim: int=None, keepdim=False, unbiased=True):
         '''

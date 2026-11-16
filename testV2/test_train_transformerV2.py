@@ -9,7 +9,7 @@ from torchic import set_default_device, set_default_precision
 from torchic import set_num_backward_workers, set_time_threshold_ms
 from torchic.tools.visualization.graphs import draw_graph
 from torchic.tools.code_analysis.mem import get_nbytes
-from torchic.nn.models.transformer_config import get_config
+from testV2.transformer_config import get_config
 from torchic.data.dataloaders.bilingual_dataloader import BilingualDataset, BilingualDataLoader
 from torchic.nn.optim import AdamV4
 from torchic.nn.loss import CrossEntropyLoss

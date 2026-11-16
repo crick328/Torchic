@@ -11,7 +11,7 @@ from torchic import Tensor
 from torchic.tools.visualization.graphs import draw_graph
 from torchic.tools.code_analysis.mem import get_nbytes
 from torchic.tools import helpers
-from torchic.nn.models.transformer_config import get_config
+from testV2.transformer_config import get_config
 from torchic.data.dataloaders.bilingual_dataloader import BilingualDataset
 from torchic.data.dataloaders.base_classes import DataLoader
 from torchic.nn.optim import AdamV3, AdamV4

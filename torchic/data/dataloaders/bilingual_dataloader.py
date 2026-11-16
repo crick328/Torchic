@@ -130,7 +130,10 @@ class BilingualDataset(Dataset):
         return {
             "encoder_input": encoder_input, # (seq_len)
             "decoder_input": decoder_input, # (seq_len)
+            # maschera solo i PAD, il modello puo' leggere qualsiasi token
             "encoder_mask": encoder_mask, # (1, 1, seq_len)
+            # deve mascherare i PAD, non far vedere i token futuri e, nella
+            # cross, non mascherare l'out dell'encoder (da qui l'&)
             "decoder_mask": decoder_mask, # (1, seq_len) & (1, seq_len, seq_len)
             "target": target, # (seq_len)
             "src_text": src_text,
@@ -188,10 +191,6 @@ class BilingualDataLoader(DataLoader):
                 batch_size = len(encoder_input)         # (la posso prendere da self)
                 device = encoder_input[0].device
                 dtype = encoder_input[0].dtype
-
-                #encoder_input_pad = pad_token * ones((batch_size, max_enc_len), dtype=dtype, device=device)
-                #decoder_input_pad = pad_token * ones((batch_size, max_dec_trg_len), dtype=dtype, device=device)
-                #target_pad = pad_token * ones((batch_size, max_dec_trg_len), dtype=dtype, device=device)
 
                 # mi creo delle matrici piene di [PAD]
                 encoder_input_pad = full((batch_size, max_enc_len), pad_token, dtype=dtype, device=device)

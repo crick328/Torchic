@@ -28,6 +28,13 @@ def calculate_gain(act_funct: str) -> float:
     return gain
 
 
+def normal(size: tuple, mean: float = 0, std: float = 0.02):
+    '''
+    Gaussian distribution with default parameters for a Embedding matrix.
+    '''
+    return Tensor(np.random.normal(mean, std, size), requires_grad=True)
+
+
 # Chiamata anche Glorot initialization, in quanto l'autore si chiama Xavier Glorot
 # Le Xavier init sembrano più indicate per layer aventi tanh o sigmoid
 # come activation function perché la loro media è 0

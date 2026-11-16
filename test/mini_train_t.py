@@ -4,9 +4,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from testV2 import transformer_config
 import torchic
 from torchic import Tensor, nn, draw_graph
-from torchic.nn.models import transformer, transformer_config
+from torchic.nn.models import transformer
 from torchic.data.dataloaders.base_classes import DataLoader
 import numpy as np
 

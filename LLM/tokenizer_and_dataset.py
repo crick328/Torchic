@@ -16,7 +16,7 @@ from datasets import load_dataset
 TOK_PATH = f"LLM/tok.json"
 SPEAKER_TOK = "<|speaker|>"
 EOT_TOK = "<|eot|>"
-JSONL_PATH = f'LLM/data/SG_FUSED_LLM.jsonl'
+JSONL_PATH = f'LLM/data/dataset/SG_FUSED_LLM.jsonl'
 VOCAB_SIZE = 2048
 
 
@@ -36,6 +36,10 @@ def tok_training_corpus_iterator(jsonl_path: str):
 
 # usata per tokenizzare il ds tramite .map()
 def tokenize_scene(example):
+    '''
+    Prendo tutte le battute di una scena (file), aggiungo i token
+    speciali, tokenizzo e restituisco
+    '''
     scene_text = ""
     for turn in example["turns"]:
         scene_text += f"<|speaker|>{turn['speaker']}\n{turn['text']}<|eot|>\n"
@@ -43,6 +47,8 @@ def tokenize_scene(example):
     encoded = tokenizer.encode(scene_text, add_special_tokens=False).ids
     # metto la frase tokenizzata in una nuova colonna
     # (cosi' droppo quella con il plain text)
+    assert min(encoded) >= 0
+    assert max(encoded) <= 65535
     return {"input_ids": encoded}
 
 
@@ -54,7 +60,8 @@ if not exists(TOK_PATH):
     # aggiunge uno spazio artificale ad inizio stringa. Di norma e'
     # una buona pratica per evitare rappresentazioni diverse per la stessa
     # parola ("cazzo" vs " cazzo")
-    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=True)
+    # Lo disattivo perche' me lo mette tra <|speaker|> e il nome
+    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
     # importante per visualizzare correttamente i tokens, come lo "spazio" Ġ
     tokenizer.decoder = decoders.ByteLevel()
 
@@ -81,7 +88,7 @@ else:
     tokenizer = Tokenizer.from_file(TOK_PATH)
     print("Tokenizer caricato con successo")
 
-
+from datasets import load_dataset, Features, Sequence, Value
 # senza di questo si rompe il multiprocessing di dataset.map()
 if __name__ == '__main__':
 
@@ -95,8 +102,13 @@ if __name__ == '__main__':
         num_proc=4                # multiprocessing
     )
 
+    tokenized_dataset = tokenized_dataset.cast_column(
+        "input_ids",
+        Sequence(Value("uint16"))
+    )
+
     print(tokenized_dataset)
     print(tokenized_dataset['train'][0]) # Vedrai game, scene e input_ids pronti
     # Salva l'intero dataset Arrow su disco
-    tokenized_dataset.save_to_disk("LLM/data/SG_ready")
+    tokenized_dataset.save_to_disk("LLM/data/dataset/SG_ready")
     print("Dataset salvato su disco!")

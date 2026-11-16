@@ -68,7 +68,7 @@ class Embedding(Linear):
     Esempio::
 
         >>> x = [1, 4]
-        >>> emb = Embedding(5, 3)
+        >>> emb = Embedding(vocab_size=5, embedding_size=3)
         >>> emb.weights
         Tensor([
             [ 0.0587, -0.1269,  0.4763],
@@ -89,17 +89,9 @@ class Embedding(Linear):
 
     def __init__(self, vocab_size: int, embedding_size: int, *args, **kwargs):
         # questa matrix pare che giovi sempre dell'init della Xavier norm
-        super().__init__(vocab_size, embedding_size, *args, bias=False, **kwargs)
-        #super().__init__(embedding_size, vocab_size, *args, bias=False, **kwargs)
+        super().__init__(vocab_size, embedding_size, False, *args, **kwargs)
     
     def __call__(self, x: Tensor) -> Tensor:
-        '''
-        Args:
-            x (Tensor): integer 1D tensor of shape (1, N)
-
-        Returns:
-            Tensor of shape (N, embedding_size)
-        '''
         # NOTE: potrei usaree torch.no_grad(), ma ha solo piu' overhead.
         # Usando .data sono in linea con le intenzioni (non voglio backward)
         # e posso dare la mia
@@ -110,12 +102,6 @@ class Embedding(Linear):
         # NOTE: non riesco ad implementarla in modo pulito. Aggiunge
         # la grad_fn solamente se hai parents 
         output.register_backward_if_needed(EmbeddingBackward, x, self.weights)
-
-        # x non puo' richiedere il grad perche' e' un tensore di interi
-        #if self.weights.requires_grad:
-            # rimuovo IndexBackward, che in questo caso non serve
-            #output._grad_fn = None
-            #output.grad_fn = EmbeddingBackward(x, self.weights)
         return output
     
 

@@ -821,8 +821,7 @@ class StdBackward(BackwardFunction):
         # Derivata della deviazione standard:
         # d/dx(sqrt((x - mean)^2 / N))
         # = (x - mean) / (N * std)
-
-        #return cr_grad * numerator / (denom + 1e-8), None
+        
         # per evitare division by zero
         denom += 1e-8
         numerator /= denom
@@ -909,19 +908,12 @@ class VarBackward(BackwardFunction):
         else:
             grad_x = cr_grad.sum(dim, keepdims=True)
 
-        # d/dx((x-x.mean)^2 / (N)) = 2(x-x.mean) / N
+        # d/dx[(x-x.mean)^2 /N] = 2(x-x.mean) / N
         # 2*mean/n * cr_grad
-        # non scompongo in due in-place perche' e' meglio
-        # fare la divisione su uno scalare
-        grad_x *= 2/n
-        grad_x *= mean
-        #grad_x /= n
-        #mean *= 2
-        #mean /= n
-        # non posso farlo, l'output e' read-only
-        #cr_grad *= mean
-        #return grad_x*mean, None
-        return grad_x, None
+        # grad_x e' read-only
+        grad_x = grad_x * 2/n
+        # non broadcastabile
+        return grad_x * mean, None
 
 
 class ViewBackward(BackwardFunction):

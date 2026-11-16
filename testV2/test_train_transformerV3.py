@@ -12,7 +12,7 @@ from torchic.data.dataloaders.bilingual_dataloader import BilingualDataset, Bili
 from torchic.nn.optim import AdamV4
 from torchic.nn.loss import CrossEntropyLoss
 from torchic.nn.models.save_load import save, load_checkpoint
-from torchic.nn.models.transformer import TransformerV2
+from torchic.nn.models.transformer_copy import TransformerV2
 from torchic.tools.sequences import greedy_decode, pad_sequence
 from torchic.settings import set_seed
 from torchic import Tensor, int16, float32
@@ -35,7 +35,7 @@ set_seed(42)
 # ==== TEST SETTINGS ====
 DS_LEN = 1000       # prende solo N campioni dal dataset. "False" prende tutto
 PROFILER = True
-SG_DATASET = False  # se False prende Opus Books
+SG_DATASET = True  # se False prende Opus Books
 DRAW_GRAPH = False  # interrompe il training e stampa il backward graph
 MY_STACK = True     
 ALLOW_FUSION = True # crea un Transformer con fusioni QKV-QK

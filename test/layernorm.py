@@ -37,7 +37,8 @@ class LayerNorm(torch.nn.Module):
         return out
 
 
-d_model=a.shape
+
+d_model=a.shape[-1]
 torch_norm = torch.nn.LayerNorm(d_model, eps=1e-12)
 t_norm = LayerNorm(d_model)
 my_norm = LayerNormalization(d_model)
@@ -45,8 +46,10 @@ my_norm = LayerNormalization(d_model)
 
 mean = a.mean(dim=None, keepdim=True)
 var = a.var(dim=None, unbiased=False, keepdim=True)
+
+
 print(torch_norm(a))
-print((a-mean)/(torch.sqrt(var+1e-12)))
-print("========")
+#print((a-mean)/(torch.sqrt(var+1e-12)))
+#print("========")
 print(t_norm(a))
 print(my_norm(ten))
